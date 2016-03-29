@@ -4,7 +4,7 @@ import "net/http"
 
 type Request struct {
 	request     *http.Request
-	routeParams map[string]string
+	RouteParams map[string]string
 }
 
 func NewRequest(r *http.Request) *Request {

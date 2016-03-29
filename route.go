@@ -21,7 +21,7 @@ func (r *Route) buildRouteParams() {
 		}
 	}
 
-	r.rq.routeParams = routeParams
+	r.rq.RouteParams = routeParams
 }
 
 func (r *Route) prepare() {
