@@ -7,6 +7,7 @@ type Route struct {
 	rs               *Response
 	rr               RequestResponse
 	routeParamsIndex map[int]string
+	route            string
 }
 
 func (r *Route) buildRouteParams() {

@@ -3,12 +3,12 @@ package goExpress
 import (
 	"strings"
 	"net/http"
+	"fmt"
 )
 
 type WebHandler struct {
 	port  string
-	//TODO: Create as slice so lookups happen in order
-	Paths map[string]Route
+	Paths []Route
 }
 
 func (wh *WebHandler) AddRoute(route string, rr RequestResponse) {
@@ -18,44 +18,58 @@ func (wh *WebHandler) AddRoute(route string, rr RequestResponse) {
 	routeObj.routeParamsIndex = make(map[int]string)
 
 	routeParts := strings.Split(route, "/")
-
+	baseDir := ""
 	for i := range routeParts {
-		if i > 1 {
+		if strings.Contains(routeParts[i], ":") {
 			routeParamMod := strings.Replace(routeParts[i], ":", "", 1)
 			routeObj.routeParamsIndex[i] = routeParamMod
+		} else {
+			baseDir += routeParts[i] + "/"
 		}
+
 	}
 
-	//TODO: Combine all parts that don't contain :
-	baseDir := "/" + routeParts[1]
-	wh.Paths[baseDir] = *routeObj
-	wh.Paths[baseDir + "/"] = *routeObj
+	fmt.Println(baseDir)
+	routeObj.route = baseDir
+
+	if wh.Paths == nil {
+		wh.Paths = make([]Route, 0)
+	}
+
+	wh.Paths = append(wh.Paths, *routeObj)
 }
 
 func (wh *WebHandler) Serve(port string) error {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		//Split and build first full path
 		pathParts := strings.Split(r.URL.Path, "/")
-		path := "/"
-		for i := range pathParts {
-			if pathParts[i] != "" {
-				path += pathParts[i] + "/"
+		path := strings.Join(pathParts, "/")
+
+		//Check all paths
+		for _ = range pathParts {
+			fmt.Println("Checking ", path)
+			for routeIndex := range wh.Paths {
+				route := wh.Paths[routeIndex]
+				if route.route == path || route.route == path + "/" {
+					request := NewRequest(r)
+					response := new(Response)
+					response.response = w
+
+					route.rq = request
+					route.rs = response
+
+					//Prepare data for call
+					route.prepare()
+
+					//Call user handler
+					route.call()
+					return
+				}
 			}
-			route, exists := wh.Paths[path]
-			if exists {
-				request := NewRequest(r)
-				response := new(Response)
-				response.response = w
 
-				route.rq = request
-				route.rs = response
-
-				//Prepare data for call
-				route.prepare()
-
-				//Call user handler
-				route.call()
-				return
-			}
+			//Cut end of array
+			_, pathParts = pathParts[len(pathParts) - 1], pathParts[:len(pathParts) - 1]
+			path = strings.Join(pathParts, "/")
 		}
 
 		http.NotFound(w, r)
