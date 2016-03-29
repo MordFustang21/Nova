@@ -29,7 +29,6 @@ func (wh *WebHandler) AddRoute(route string, rr RequestResponse) {
 
 	}
 
-	fmt.Println(baseDir)
 	routeObj.route = baseDir
 
 	if wh.Paths == nil {
