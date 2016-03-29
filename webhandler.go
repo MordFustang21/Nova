@@ -47,7 +47,6 @@ func (wh *WebHandler) Serve(port string) error {
 
 		//Check all paths
 		for _ = range pathParts {
-			fmt.Println("Checking ", path)
 			for routeIndex := range wh.Paths {
 				route := wh.Paths[routeIndex]
 				if route.route == path || route.route == path + "/" {
