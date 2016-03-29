@@ -3,7 +3,6 @@ package goExpress
 import (
 	"strings"
 	"net/http"
-	"fmt"
 )
 
 type WebHandler struct {
