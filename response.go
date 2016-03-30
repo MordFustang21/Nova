@@ -10,8 +10,15 @@ type Response struct {
 	response http.ResponseWriter
 }
 
-func (r *Response) Send(msg string) {
-	r.response.Write([]byte(msg))
+func (r *Response) Send(data interface{}) {
+	switch v := data.(type) {
+	case []byte:
+		r.response.Write(v)
+		break;
+	case string:
+		r.response.Write([]byte(v))
+		break;
+	}
 }
 
 func (r *Response) Json(obj interface{}) error {
