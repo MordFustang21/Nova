@@ -1,4 +1,4 @@
-package goExpress
+package nova
 
 import (
 	"net/http"
@@ -7,16 +7,16 @@ import (
 )
 
 type Response struct {
-	response http.ResponseWriter
+	R http.ResponseWriter
 }
 
 func (r *Response) Send(data interface{}) {
 	switch v := data.(type) {
 	case []byte:
-		r.response.Write(v)
+		r.R.Write(v)
 		break;
 	case string:
-		r.response.Write([]byte(v))
+		r.R.Write([]byte(v))
 		break;
 	}
 }
@@ -27,8 +27,8 @@ func (r *Response) Json(obj interface{}) error {
 		log.Println(err)
 		return err
 	} else {
-		r.response.Header().Set("Content-Type", "application/json")
-		r.response.Write(json)
+		r.R.Header().Set("Content-Type", "application/json")
+		r.R.Write(json)
 	}
 	return nil
 }

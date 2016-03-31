@@ -5,19 +5,24 @@ Provides a lot of the same methods as express.js
 
 Example
 ```go
-wh := new(goExpress.WebHandler)
+n := nova.Nova()
 
-wh.AddRoute("/test/taco/:apple", func(req *goExpress.Request, res *goExpress.Response) {
-	res.Send("Received Taco")
+n.Use(func(req *nova.Request, res *nova.Response, next nova.Next) {
+    res.R.Header().Set("Powered-By", "Nova")
+    next()
+})
+
+n.AddRoute("/test/taco/:apple", func(req *nova.Request, res *nova.Response) {
+    res.Send("Received Taco")
 });
 
-wh.AddRoute("/test/:taco/:apple", func(req *goExpress.Request, res *goExpress.Response) {
-	res.Json(req.RouteParams)
+n.AddRoute("/test/:taco/:apple", func(req *nova.Request, res *nova.Response) {
+    res.Json(req.RouteParams)
 });
 
-err := wh.Serve("8080")
+err := n.Serve("8080")
 
 if err != nil {
-	log.Fatal(err)
+    log.Fatal(err)
 }
 ```
