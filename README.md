@@ -1,7 +1,7 @@
-# go-express (name will change)
+# Nova
 An express like framework for go web servers
 
-Provides a lot of the same methods as express.js
+Provides a lot of the same methods and functionality as express.js
 
 Example
 ```go
