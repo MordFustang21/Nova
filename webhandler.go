@@ -3,12 +3,17 @@ package nova
 import (
 	"strings"
 	"net/http"
+	"os"
+	"io/ioutil"
+	"log"
+	"mime"
 )
 
 type WebHandler struct {
 	port       string
 	Paths      []Route
 	middleWare []MiddleWare
+	staticDirs []string
 }
 
 type MiddleWare struct {
@@ -50,6 +55,18 @@ func (wh *WebHandler) AddRoute(route string, rr RequestResponse) {
 	wh.Paths = append(wh.Paths, *routeObj)
 }
 
+//Used to serve static files
+func (wh *WebHandler) AddStatic(dir string) {
+
+	if wh.staticDirs == nil {
+		wh.staticDirs = make([]string, 0)
+	}
+
+	if _, err := os.Stat(dir); err == nil {
+		wh.staticDirs = append(wh.staticDirs, dir)
+	}
+}
+
 //Adds a new function to the middleware stack
 func (wh *WebHandler) Use(f func(*Request, *Response, Next)) {
 	if wh.middleWare == nil {
@@ -68,7 +85,7 @@ func (wh *WebHandler) Serve(port string) error {
 		response := new(Response)
 		response.R = w
 
-		//Run Middlware
+		//Run Middleware
 		wh.runMiddleware(request, response)
 
 		//Split and build first full path
@@ -97,9 +114,17 @@ func (wh *WebHandler) Serve(port string) error {
 			path = strings.Join(pathParts, "/")
 		}
 
+		//Check for static file
+		served := wh.serveStatic(request, response)
+
+		if served {
+			return
+		}
+
 		http.NotFound(w, r)
 
 	})
+
 	return http.ListenAndServe(":" + port, nil)
 }
 
@@ -110,4 +135,44 @@ func (wh *WebHandler) runMiddleware(request *Request, response *Response) {
 			return
 		})
 	}
+}
+
+//TODO: Convert to middleware
+func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
+
+	for i := range wh.staticDirs {
+		staticDir := wh.staticDirs[i]
+		path := staticDir + req.R.URL.Path
+
+		//Remove all .. for security TODO: Allow if doesn't go above basedir
+		path = strings.Replace(path, "..", "", -1)
+
+		//If ends in / default to index.html
+		if strings.HasSuffix(path, "/") {
+			path += "index.html"
+		}
+
+		if _, err := os.Stat(path); err == nil {
+
+			contents, err := ioutil.ReadFile(path)
+
+			if err != nil {
+				log.Println("Unable to serve file")
+			}
+
+			//Set mime type
+			extensionParts := strings.Split(path, ".")
+			ext := extensionParts[len(extensionParts) - 1]
+			mType := mime.TypeByExtension("." + ext)
+
+			if mType != "" {
+				res.R.Header().Set("Content-Type", mType)
+			}
+
+			res.Send(contents)
+			return true
+		}
+	}
+
+	return false
 }

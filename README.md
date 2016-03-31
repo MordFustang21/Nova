@@ -7,11 +7,16 @@ Example
 ```go
 n := nova.Nova()
 
+//Static folder example
+n.AddStatic("/sitedir/")
+
+//Middleware Example
 n.Use(func(req *nova.Request, res *nova.Response, next nova.Next) {
     res.R.Header().Set("Powered-By", "Nova")
     next()
 })
 
+//Route Examples
 n.AddRoute("/test/taco/:apple", func(req *nova.Request, res *nova.Response) {
     res.Send("Received Taco")
 });
