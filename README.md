@@ -31,3 +31,5 @@ if err != nil {
     log.Fatal(err)
 }
 ```
+# Todo:
+Add graceful stopping
