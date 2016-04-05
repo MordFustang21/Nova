@@ -25,7 +25,7 @@ n.AddRoute("/test/:taco/:apple", func(req *nova.Request, res *nova.Response) {
     res.Json(req.RouteParams)
 });
 
-err := n.Serve("8080")
+err := n.Serve(":8080")
 
 if err != nil {
     log.Fatal(err)

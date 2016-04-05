@@ -10,10 +10,11 @@ import (
 )
 
 type WebHandler struct {
-	port       string
-	Paths      []Route
-	middleWare []MiddleWare
-	staticDirs []string
+	port         string
+	Paths        []Route
+	middleWare   []MiddleWare
+	staticDirs   []string
+	cachedStatic map[string][]byte
 }
 
 type MiddleWare struct {
@@ -25,6 +26,8 @@ type Next func()
 //Returns new instance of the web handler
 func Nova() *WebHandler {
 	wh := new(WebHandler)
+
+	wh.cachedStatic = make(map[string][]byte)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//Build request response for middle ware
@@ -126,13 +129,13 @@ func (wh *WebHandler) Use(f func(*Request, *Response, Next)) {
 }
 
 //Starts serving the routes
-func (wh *WebHandler) Serve(port string) error {
-	return http.ListenAndServe(":" + port, nil)
+func (wh *WebHandler) Serve(addr string) error {
+	return http.ListenAndServe(addr, nil)
 }
 
 //Start serving secure
 func (wh *WebHandler) ServeSecure(addr string, certFile string, keyFile string) error {
-	return http.ListenAndServeTLS(":" + addr, certFile, keyFile, nil)
+	return http.ListenAndServeTLS(addr, certFile, keyFile, nil)
 }
 
 //Internal method that runs the middleware
@@ -161,10 +164,17 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 
 		if _, err := os.Stat(path); err == nil {
 
-			contents, err := ioutil.ReadFile(path)
+			var contents []byte
+			contents, ok := wh.cachedStatic[path]
+
+			//TODO: Build cache object with insert time to check against
+			if !ok {
+				contents, err = ioutil.ReadFile(path)
+				wh.cachedStatic[path] = contents
+			}
 
 			if err != nil {
-				log.Println("Unable to serve file")
+				log.Println("Unable to read file")
 			}
 
 			//Set mime type
