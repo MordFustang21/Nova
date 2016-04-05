@@ -24,7 +24,55 @@ type Next func()
 
 //Returns new instance of the web handler
 func Nova() *WebHandler {
-	return new(WebHandler)
+	wh := new(WebHandler)
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		//Build request response for middle ware
+		request := NewRequest(r)
+		response := new(Response)
+		response.R = w
+
+		//Run Middleware
+		wh.runMiddleware(request, response)
+
+		//Split and build first full path
+		pathParts := strings.Split(r.URL.Path, "/")
+		path := strings.Join(pathParts, "/")
+
+		//Check all paths
+		for _ = range pathParts {
+			for routeIndex := range wh.Paths {
+				route := wh.Paths[routeIndex]
+				if route.route == path || route.route == path + "/" {
+					route.rq = request
+					route.rs = response
+
+					//Prepare data for call
+					route.prepare()
+
+					//Call user handler
+					route.call()
+					return
+				}
+			}
+
+			//Cut end of array
+			_, pathParts = pathParts[len(pathParts) - 1], pathParts[:len(pathParts) - 1]
+			path = strings.Join(pathParts, "/")
+		}
+
+		//Check for static file
+		served := wh.serveStatic(request, response)
+
+		if served {
+			return
+		}
+
+		http.NotFound(w, r)
+
+	})
+
+	return wh
 }
 
 //Adds new route to the stack
@@ -79,53 +127,12 @@ func (wh *WebHandler) Use(f func(*Request, *Response, Next)) {
 
 //Starts serving the routes
 func (wh *WebHandler) Serve(port string) error {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		//Build request response for middle ware
-		request := NewRequest(r)
-		response := new(Response)
-		response.R = w
-
-		//Run Middleware
-		wh.runMiddleware(request, response)
-
-		//Split and build first full path
-		pathParts := strings.Split(r.URL.Path, "/")
-		path := strings.Join(pathParts, "/")
-
-		//Check all paths
-		for _ = range pathParts {
-			for routeIndex := range wh.Paths {
-				route := wh.Paths[routeIndex]
-				if route.route == path || route.route == path + "/" {
-					route.rq = request
-					route.rs = response
-
-					//Prepare data for call
-					route.prepare()
-
-					//Call user handler
-					route.call()
-					return
-				}
-			}
-
-			//Cut end of array
-			_, pathParts = pathParts[len(pathParts) - 1], pathParts[:len(pathParts) - 1]
-			path = strings.Join(pathParts, "/")
-		}
-
-		//Check for static file
-		served := wh.serveStatic(request, response)
-
-		if served {
-			return
-		}
-
-		http.NotFound(w, r)
-
-	})
-
 	return http.ListenAndServe(":" + port, nil)
+}
+
+//Start serving secure
+func (wh *WebHandler) ServeSecure(addr string, certFile string, keyFile string) error {
+	return http.ListenAndServeTLS(":" + addr, certFile, keyFile, nil)
 }
 
 //Internal method that runs the middleware
