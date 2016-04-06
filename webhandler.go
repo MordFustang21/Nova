@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime"
 	"time"
+	"fmt"
 )
 
 type WebHandler struct {
@@ -16,7 +17,7 @@ type WebHandler struct {
 	middleWare    []MiddleWare
 	staticDirs    []string
 	cachedStatic  map[string]CachedObj
-	maxCachedTime int
+	maxCachedTime int64
 }
 
 //Middleware obj to hold functions
@@ -155,7 +156,7 @@ func (wh *WebHandler) runMiddleware(request *Request, response *Response) {
 }
 
 //Sets the cachetimeout in seconds
-func (wh *WebHandler) SetCacheTimeout(seconds int) {
+func (wh *WebHandler) SetCacheTimeout(seconds int64) {
 	wh.maxCachedTime = seconds
 }
 
@@ -179,7 +180,8 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 			var cachedObj CachedObj
 			cachedObj, ok := wh.cachedStatic[path]
 
-			if !ok || time.Now().Second() - cachedObj.timeCached.Second() > wh.maxCachedTime {
+			fmt.Println(time.Now().Unix() - cachedObj.timeCached.Unix())
+			if !ok || time.Now().Unix() - cachedObj.timeCached.Unix() > wh.maxCachedTime {
 				println("Loading new")
 				contents, err := ioutil.ReadFile(path)
 				if err != nil {
