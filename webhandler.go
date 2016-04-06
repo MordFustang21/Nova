@@ -7,27 +7,34 @@ import (
 	"io/ioutil"
 	"log"
 	"mime"
+	"time"
 )
 
 type WebHandler struct {
-	port         string
-	Paths        []Route
-	middleWare   []MiddleWare
-	staticDirs   []string
-	cachedStatic map[string][]byte
+	port          string
+	Paths         []Route
+	middleWare    []MiddleWare
+	staticDirs    []string
+	cachedStatic  map[string]CachedObj
+	maxCachedTime int
 }
 
+//Middleware obj to hold functions
 type MiddleWare struct {
 	middleFunc func(*Request, *Response, Next)
 }
 
 type Next func()
 
+type CachedObj struct {
+	data       []byte
+	timeCached time.Time
+}
 //Returns new instance of the web handler
 func Nova() *WebHandler {
 	wh := new(WebHandler)
 
-	wh.cachedStatic = make(map[string][]byte)
+	wh.cachedStatic = make(map[string]CachedObj)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//Build request response for middle ware
@@ -147,6 +154,11 @@ func (wh *WebHandler) runMiddleware(request *Request, response *Response) {
 	}
 }
 
+//Sets the cachetimeout in seconds
+func (wh *WebHandler) SetCacheTimeout(seconds int) {
+	wh.maxCachedTime = seconds
+}
+
 //TODO: Convert to middleware
 func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 
@@ -164,13 +176,17 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 
 		if _, err := os.Stat(path); err == nil {
 
-			var contents []byte
-			contents, ok := wh.cachedStatic[path]
+			var cachedObj CachedObj
+			cachedObj, ok := wh.cachedStatic[path]
 
-			//TODO: Build cache object with insert time to check against
-			if !ok {
-				contents, err = ioutil.ReadFile(path)
-				wh.cachedStatic[path] = contents
+			if !ok || time.Now().Second() - cachedObj.timeCached.Second() > wh.maxCachedTime {
+				println("Loading new")
+				contents, err := ioutil.ReadFile(path)
+				if err != nil {
+					log.Println("unable to read file", err)
+				}
+				cachedObj = CachedObj{data:contents, timeCached: time.Now()}
+				wh.cachedStatic[path] = cachedObj
 			}
 
 			if err != nil {
@@ -186,7 +202,7 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 				res.R.Header().Set("Content-Type", mType)
 			}
 
-			res.Send(contents)
+			res.Send(cachedObj.data)
 			return true
 		}
 	}

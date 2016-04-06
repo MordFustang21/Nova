@@ -9,6 +9,8 @@ n := nova.Nova()
 
 //Static folder example
 n.AddStatic("/sitedir/")
+//If you want to cache a file (seconds)
+n.SetCacheTimeout(5)
 
 //Middleware Example
 n.Use(func(req *nova.Request, res *nova.Response, next nova.Next) {
