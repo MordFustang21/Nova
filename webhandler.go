@@ -8,7 +8,6 @@ import (
 	"log"
 	"mime"
 	"time"
-	"fmt"
 )
 
 type WebHandler struct {
@@ -180,9 +179,7 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 			var cachedObj CachedObj
 			cachedObj, ok := wh.cachedStatic[path]
 
-			fmt.Println(time.Now().Unix() - cachedObj.timeCached.Unix())
 			if !ok || time.Now().Unix() - cachedObj.timeCached.Unix() > wh.maxCachedTime {
-				println("Loading new")
 				contents, err := ioutil.ReadFile(path)
 				if err != nil {
 					log.Println("unable to read file", err)
