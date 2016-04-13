@@ -16,11 +16,8 @@ type WebHandler struct {
 	Paths         []Route
 	middleWare    []MiddleWare
 	staticDirs    []string
-	cachedStatic  map[string]*CachedObj
+	cachedStatic  *CachedStatic
 	maxCachedTime int64
-	//TODO: Move mutex to new struct for cache to not lockup whole webhandler
-	// just cache map
-	mutex         sync.RWMutex
 }
 
 //Middleware obj to hold functions
@@ -35,11 +32,17 @@ type CachedObj struct {
 	timeCached time.Time
 }
 
+type CachedStatic struct {
+	mutex sync.Mutex
+	files map[string]*CachedObj
+}
+
 //Returns new instance of the web handler
 func Nova() *WebHandler {
 	wh := new(WebHandler)
 
-	wh.cachedStatic = make(map[string]*CachedObj)
+	wh.cachedStatic = new(CachedStatic)
+	wh.cachedStatic.files = make(map[string]*CachedObj)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//Build request response for middle ware
@@ -180,9 +183,9 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 		}
 
 		if _, err := os.Stat(path); err == nil {
-			wh.mutex.Lock()
+			wh.cachedStatic.mutex.Lock()
 			var cachedObj *CachedObj
-			cachedObj, ok := wh.cachedStatic[path]
+			cachedObj, ok := wh.cachedStatic.files[path]
 
 			if !ok || time.Now().Unix() - cachedObj.timeCached.Unix() > wh.maxCachedTime {
 				contents, err := ioutil.ReadFile(path)
@@ -190,9 +193,9 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 					log.Println("unable to read file", err)
 				}
 				cachedObj = &CachedObj{data:contents, timeCached: time.Now()}
-				wh.cachedStatic[path] = cachedObj
+				wh.cachedStatic.files[path] = cachedObj
 			}
-			wh.mutex.Unlock()
+			wh.cachedStatic.mutex.Unlock()
 
 			if err != nil {
 				log.Println("Unable to read file")
