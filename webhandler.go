@@ -8,6 +8,7 @@ import (
 	"log"
 	"mime"
 	"time"
+	"sync"
 )
 
 type WebHandler struct {
@@ -15,8 +16,11 @@ type WebHandler struct {
 	Paths         []Route
 	middleWare    []MiddleWare
 	staticDirs    []string
-	cachedStatic  map[string]CachedObj
+	cachedStatic  map[string]*CachedObj
 	maxCachedTime int64
+	//TODO: Move mutex to new struct for cache to not lockup whole webhandler
+	// just cache map
+	mutex         sync.RWMutex
 }
 
 //Middleware obj to hold functions
@@ -30,11 +34,12 @@ type CachedObj struct {
 	data       []byte
 	timeCached time.Time
 }
+
 //Returns new instance of the web handler
 func Nova() *WebHandler {
 	wh := new(WebHandler)
 
-	wh.cachedStatic = make(map[string]CachedObj)
+	wh.cachedStatic = make(map[string]*CachedObj)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//Build request response for middle ware
@@ -175,8 +180,8 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 		}
 
 		if _, err := os.Stat(path); err == nil {
-
-			var cachedObj CachedObj
+			wh.mutex.Lock()
+			var cachedObj *CachedObj
 			cachedObj, ok := wh.cachedStatic[path]
 
 			if !ok || time.Now().Unix() - cachedObj.timeCached.Unix() > wh.maxCachedTime {
@@ -184,9 +189,10 @@ func (wh *WebHandler) serveStatic(req *Request, res *Response) bool {
 				if err != nil {
 					log.Println("unable to read file", err)
 				}
-				cachedObj = CachedObj{data:contents, timeCached: time.Now()}
+				cachedObj = &CachedObj{data:contents, timeCached: time.Now()}
 				wh.cachedStatic[path] = cachedObj
 			}
+			wh.mutex.Unlock()
 
 			if err != nil {
 				log.Println("Unable to read file")
