@@ -51,7 +51,11 @@ func Nova() *WebHandler {
 		response.R = w
 
 		//Run Middleware
-		wh.runMiddleware(request, response)
+		finished := wh.runMiddleware(request, response)
+
+		if !finished {
+			return
+		}
 
 		//Split and build first full path
 		pathParts := strings.Split(r.URL.Path, "/")
@@ -154,12 +158,21 @@ func (wh *WebHandler) ServeSecure(addr string, certFile string, keyFile string) 
 }
 
 //Internal method that runs the middleware
-func (wh *WebHandler) runMiddleware(request *Request, response *Response) {
+func (wh *WebHandler) runMiddleware(request *Request, response *Response) bool {
+	stackFinished := true
 	for m := range wh.middleWare {
+		nextCalled := false
 		wh.middleWare[m].middleFunc(request, response, func() {
-			return
+			nextCalled = true
 		})
+
+		if !nextCalled {
+			stackFinished = false
+			break
+		}
 	}
+
+	return stackFinished
 }
 
 //Sets the cachetimeout in seconds
