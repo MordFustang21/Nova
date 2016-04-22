@@ -20,6 +20,15 @@ n.Use(func(req *nova.Request, res *nova.Response, next nova.Next) {
 
 //Route Examples
 n.AddRoute("/test/taco/:apple", func(req *nova.Request, res *nova.Response) {
+    type test struct {
+        Apple string
+    }
+
+    testS := test{}
+    err := req.Json(&testS)
+    if err != nil {
+        log.Println(err)
+    }
     res.Send("Received Taco")
 });
 
