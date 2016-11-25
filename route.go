@@ -5,7 +5,7 @@ import "strings"
 type Route struct {
 	rq               *Request
 	rs               *Response
-	rr               RequestResponse
+	rr               func(*Request, *Response)
 	routeParamsIndex map[int]string
 	route            string
 }

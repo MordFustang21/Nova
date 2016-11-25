@@ -13,7 +13,7 @@ import (
 
 type WebHandler struct {
 	port          string
-	Paths         []Route
+	Paths         map[string]Route
 	middleWare    []MiddleWare
 	staticDirs    []string
 	cachedStatic  *CachedStatic
@@ -62,20 +62,18 @@ func Nova() *WebHandler {
 		path := strings.Join(pathParts, "/")
 
 		//Check all paths
-		for _ = range pathParts {
-			for routeIndex := range wh.Paths {
-				route := wh.Paths[routeIndex]
-				if route.route == path || route.route == path + "/" {
-					route.rq = request
-					route.rs = response
+		for range pathParts {
+			route, ok := wh.Paths[path]
+			if ok {
+				route.rq = request
+				route.rs = response
 
-					//Prepare data for call
-					route.prepare()
+				//Prepare data for call
+				route.prepare()
 
-					//Call user handler
-					route.call()
-					return
-				}
+				//Call user handler
+				route.call()
+				return
 			}
 
 			//Cut end of array
@@ -98,9 +96,9 @@ func Nova() *WebHandler {
 }
 
 //Adds new route to the stack
-func (wh *WebHandler) AddRoute(route string, rr RequestResponse) {
+func (wh *WebHandler) AddRoute(route string, routeFunc func(*Request, *Response)) {
 	routeObj := new(Route)
-	routeObj.rr = rr
+	routeObj.rr = routeFunc
 
 	routeObj.routeParamsIndex = make(map[int]string)
 
@@ -116,13 +114,13 @@ func (wh *WebHandler) AddRoute(route string, rr RequestResponse) {
 
 	}
 
-	routeObj.route = baseDir
+	routeObj.route = strings.TrimSuffix(baseDir, "/")
 
 	if wh.Paths == nil {
-		wh.Paths = make([]Route, 0)
+		wh.Paths = make(map[string]Route)
 	}
 
-	wh.Paths = append(wh.Paths, *routeObj)
+	wh.Paths[routeObj.route] = *routeObj
 }
 
 //Used to serve static files

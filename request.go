@@ -10,29 +10,34 @@ import (
 type Request struct {
 	R           *http.Request
 	RouteParams map[string]string
-	Body        []byte
 }
 
 func NewRequest(r *http.Request) *Request {
 	request := new(Request)
 	request.R = r
-	if r.Body != nil {
-		data, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-
-		} else {
-			request.Body = data
-		}
-	}
 
 	return request
 }
 
-func (r *Request) Json(i interface{}) error {
-	if r.Body == nil {
-		return errors.New("Request Body is empty")
+func (r *Request) GetBody() []byte {
+	data, err := ioutil.ReadAll(r.R.Body)
+	if err != nil {
+		println(err.Error())
 	} else {
-		return json.Unmarshal(r.Body, i)
+		return data
 	}
+
+	return make([]byte, 0)
+}
+
+func (r *Request) AsJson(i interface{}) error {
+
+	jsn := r.GetBody()
+	if len(jsn) != 0 {
+		json.Unmarshal(jsn, i)
+	} else {
+		return errors.New("Request body is empty")
+	}
+	return nil
 }
 
