@@ -22,10 +22,8 @@ type WebHandler struct {
 
 //Middleware obj to hold functions
 type MiddleWare struct {
-	middleFunc func(*Request, *Response, Next)
+	middleFunc func(*Request, *Response, func())
 }
-
-type Next func()
 
 type CachedObj struct {
 	data       []byte
@@ -136,7 +134,7 @@ func (wh *WebHandler) AddStatic(dir string) {
 }
 
 //Adds a new function to the middleware stack
-func (wh *WebHandler) Use(f func(*Request, *Response, Next)) {
+func (wh *WebHandler) Use(f func(*Request, *Response, func())) {
 	if wh.middleWare == nil {
 		wh.middleWare = make([]MiddleWare, 0)
 	}
