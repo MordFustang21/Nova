@@ -1,46 +1,69 @@
 # Nova
-An express like framework for go web servers
+A custom router for http.Server
 
-Provides a lot of the same methods and functionality as express.js
+Provides a lot of the same methods and functionality as Expressjs
 
 Example
 ```go
-n := nova.Nova()
+package main
 
-//Static folder example
-n.AddStatic("/sitedir/")
-//If you want to cache a file (seconds)
-n.SetCacheTimeout(5)
+import (
+	"github.com/MordFustang21/Nova"
+)
 
-//Middleware Example
-n.Use(func(req *nova.Request, res *nova.Response, next nova.Next) {
-    res.R.Header().Set("Powered-By", "Nova")
-    next()
-})
+func main() {
+	// Get new instance of server
+	s := supernova.New()
 
-//Route Examples
-n.AddRoute("/test/taco/:apple", func(req *nova.Request, res *nova.Response) {
-    type test struct {
-        Apple string
-    }
+	//Static folder example
+	s.AddStatic("/sitedir/")
 
-    testS := test{}
-    err := req.Json(&testS)
-    if err != nil {
-        log.Println(err)
-    }
-    res.Send("Received Taco")
-});
+	//If you want to cache a file (seconds)
+	s.SetCacheTimeout(5)
 
-n.AddRoute("/test/:taco/:apple", func(req *nova.Request, res *nova.Response) {
-    res.Json(req.RouteParams)
-});
+	//Middleware Example
+	s.Use(func(req *nova.Request, next func()) {
+		req.Response.Header().Set("Powered-By", "supernova")
+		next()
+	})
 
-err := n.Serve(":8080")
+	//Route Examples
+	s.Post("/test/taco/:apple", func(req *nova.Request) {
+		type test struct {
+			Apple string
+		}
 
-if err != nil {
-    log.Fatal(err)
+		// Read JSON into struct from body
+		var testS testS
+		err := req.ReadJSON(&testS)
+		if err != nil {
+			log.Println(err)
+		}
+		req.Send("Received data")
+	});
+
+	// Example Get route with route params
+	s.Get("/test/:taco/:apple", func(req *nova.Request) {
+		tacoType := req.Param("taco")
+		req.Send(tacoType)
+	});
+
+	// Resticted routes are used to restrict methods other than GET,PUT,POST,DELETE
+	s.Restricted("OPTIONS", "/test/stuff", func(req *supernova.Request) {
+		req.Send("OPTIONS Request received")
+	})
+
+	// Example post returning error
+	s.Post("/register", func(req *nova.Request) {
+		if len(req.Request.Body()) == 0 {
+			// response code, error message, and any struct you want put into the errors array
+			req.Error(500, "Body is empty", interface{})
+		}
+	})
+
+	err := s.ListenAndServe(":8080")
+	if err != nil {
+		println(err.Error())
+	}
 }
 ```
-# Todo:
-Add graceful stopping
