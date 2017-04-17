@@ -1,0 +1,394 @@
+// Package supernova is a fasthttp router that implements a radix tree for fast lookups
+package nova
+
+import (
+	"bytes"
+	"fmt"
+	"io/ioutil"
+	"mime"
+	"net"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"io"
+	"net/http"
+
+	"github.com/klauspost/compress/gzip"
+)
+
+// Server represents the router and all associated data
+type Server struct {
+	server *http.Server
+	ln     net.Listener
+
+	// radix tree for looking up routes
+	paths map[string]*Node
+
+	staticDirs         []string
+	middleWare         []Middleware
+	cachedStatic       *CachedStatic
+	maxCachedTime      int64
+	compressionEnabled bool
+
+	// shutdown function called when ctl-c is intercepted
+	shutdownHandler func()
+
+	// debug defines logging for requests
+	debug bool
+}
+
+// Node holds a single route with accompanying children routes
+type Node struct {
+	route    *Route
+	isEdge   bool
+	children map[string]*Node
+}
+
+// CachedObj represents a static asset
+type CachedObj struct {
+	data       []byte
+	timeCached time.Time
+}
+
+// CachedStatic holds all cached static assets in memory
+type CachedStatic struct {
+	mutex sync.Mutex
+	files map[string]*CachedObj
+}
+
+// Middleware holds all middleware functions
+type Middleware struct {
+	middleFunc func(*Request, func())
+}
+
+// New returns new supernova router
+func New() *Server {
+	s := new(Server)
+	s.cachedStatic = new(CachedStatic)
+	s.cachedStatic.files = make(map[string]*CachedObj)
+	return s
+}
+
+// EnableDebug toggles output for incoming requests
+func (sn *Server) EnableDebug(debug bool) {
+	if debug {
+		sn.debug = true
+	}
+}
+
+// ListenAndServe starts the server
+func (sn *Server) ListenAndServe(addr string) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", sn.handler)
+	sn.server = &http.Server{
+		Handler: mux,
+		Addr: addr,
+	}
+
+	return sn.server.ListenAndServe()
+}
+
+// ServeTLS starts server with ssl
+func (sn *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
+	sn.server = &http.Server{}
+	return sn.server.ListenAndServeTLS(certFile, keyFile)
+}
+
+// Close closes existing listener
+func (sn *Server) Close() error {
+	return sn.ln.Close()
+}
+
+// handler is the main entry point into the router
+func (sn *Server) handler(w http.ResponseWriter, r *http.Request) {
+	request := NewRequest(w, r)
+	var logMethod func()
+	if sn.debug {
+		logMethod = getDebugMethod(request)
+	}
+
+	if logMethod != nil {
+		defer logMethod()
+	}
+
+	// Run Middleware
+	finished := sn.runMiddleware(request)
+	if !finished {
+		return
+	}
+
+	route := sn.climbTree(request.GetMethod(), request.BaseUrl)
+	if route != nil {
+		route.call(request)
+		return
+	}
+
+	// Check for static file
+	served := sn.serveStatic(request)
+	if served {
+		return
+	}
+
+	http.NotFound(w, r)
+}
+
+// All adds route for all http methods
+func (sn *Server) All(route string, routeFunc func(*Request)) {
+	sn.addRoute("", buildRoute(route, routeFunc))
+}
+
+// Get adds only GET method to route
+func (sn *Server) Get(route string, routeFunc func(*Request)) {
+	sn.addRoute("GET", buildRoute(route, routeFunc))
+}
+
+// Post adds only POST method to route
+func (sn *Server) Post(route string, routeFunc func(*Request)) {
+	sn.addRoute("POST", buildRoute(route, routeFunc))
+}
+
+// Put adds only PUT method to route
+func (sn *Server) Put(route string, routeFunc func(*Request)) {
+	sn.addRoute("PUT", buildRoute(route, routeFunc))
+}
+
+// Delete adds only DELETE method to route
+func (sn *Server) Delete(route string, routeFunc func(*Request)) {
+	sn.addRoute("DELETE", buildRoute(route, routeFunc))
+}
+
+// Restricted adds route that is restricted by method
+func (sn *Server) Restricted(method, route string, routeFunc func(*Request)) {
+	sn.addRoute(method, buildRoute(route, routeFunc))
+}
+
+// addRoute takes route and method and adds it to route tree
+func (sn *Server) addRoute(method string, route *Route) {
+	routeStr := route.route
+	if routeStr[len(routeStr)-1] == '/' {
+		routeStr = routeStr[:len(routeStr)-1]
+		route.route = routeStr
+	}
+	if sn.paths == nil {
+		sn.paths = make(map[string]*Node)
+	}
+
+	if sn.paths[method] == nil {
+		node := new(Node)
+		node.children = make(map[string]*Node)
+		sn.paths[method] = node
+	}
+
+	parts := strings.Split(routeStr[1:], "/")
+
+	currentNode := sn.paths[method]
+	for index, val := range parts {
+		childKey := val
+		if val[0] == ':' {
+			childKey = ""
+		} else {
+			childKey = val
+		}
+
+		if node, ok := currentNode.children[childKey]; ok {
+			currentNode = node
+		} else {
+			node := getNode(false, nil)
+			currentNode.children[childKey] = node
+			currentNode = node
+		}
+
+		if index == len(parts)-1 {
+			node := getNode(true, route)
+			currentNode.children[childKey] = node
+			currentNode = node
+		}
+	}
+}
+
+// getNode builds a new node to be added to the radix tree
+func getNode(isEdge bool, route *Route) *Node {
+	node := new(Node)
+	node.children = make(map[string]*Node)
+	if isEdge {
+		node.isEdge = true
+		node.route = route
+	}
+	return node
+}
+
+// climbTree takes in path and traverses tree to find route
+func (sn *Server) climbTree(method, path string) *Route {
+	parts := strings.Split(path[1:], "/")
+	pathLen := len(parts) - 1
+
+	currentNode, ok := sn.paths[method]
+	if !ok {
+		currentNode, ok = sn.paths[""]
+		if !ok {
+			return nil
+		}
+	}
+	for index, val := range parts {
+		var node *Node
+
+		node = currentNode.children[val]
+		if node == nil {
+			node = currentNode.children[""]
+		}
+
+		// path not found return
+		if node == nil {
+			return nil
+		}
+
+		currentNode = node
+
+		// if at end return current route
+		if index == pathLen {
+			if node, ok := currentNode.children[val]; ok {
+				return node.route
+			}
+
+			if node, ok = currentNode.children[""]; ok {
+				return node.route
+			}
+
+		}
+	}
+
+	return nil
+}
+
+// buildRoute creates new Route
+func buildRoute(route string, routeFunc func(*Request)) *Route {
+	routeObj := new(Route)
+	routeObj.routeFunc = routeFunc
+	routeObj.routeParamsIndex = make(map[int]string)
+	routeObj.route = route
+
+	return routeObj
+}
+
+// AddStatic adds static route to be served
+func (sn *Server) AddStatic(dir string) {
+	if sn.staticDirs == nil {
+		sn.staticDirs = make([]string, 0)
+	}
+
+	if _, err := os.Stat(dir); err == nil {
+		sn.staticDirs = append(sn.staticDirs, dir)
+	}
+}
+
+// EnableGzip turns on Gzip compression for static
+func (sn *Server) EnableGzip(value bool) {
+	sn.compressionEnabled = value
+}
+
+// serveStatic looks up folder and serves static files
+func (sn *Server) serveStatic(req *Request) bool {
+	for i := range sn.staticDirs {
+		staticDir := sn.staticDirs[i]
+		path := staticDir + req.URL.Path
+
+		// Remove all .. for security TODO: Allow if doesn't go above basedir
+		path = strings.Replace(path, "..", "", -1)
+
+		// If ends in / default to index.html
+		if strings.HasSuffix(path, "/") {
+			path += "index.html"
+		}
+
+		stat, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+
+		// Set mime type
+		extensionParts := strings.Split(path, ".")
+		ext := extensionParts[len(extensionParts)-1]
+		mType := mime.TypeByExtension("." + ext)
+
+		if mType != "" {
+			req.Response.Header().Set("Content-Type", mType)
+		}
+
+		if sn.compressionEnabled && stat.Size() < 10000000 {
+			var b bytes.Buffer
+			writer := gzip.NewWriter(&b)
+
+			data, err := ioutil.ReadFile(path)
+			if err != nil {
+				println("Unable to read: " + err.Error())
+			}
+
+			writer.Write(data)
+			writer.Close()
+			req.Response.Header().Set("Content-Encoding", "gzip")
+			req.Send(b.String())
+		} else {
+			file, err := os.Open(path)
+			if err != nil {
+				// TODO: handle error
+			}
+
+			io.Copy(req.Response, file)
+		}
+
+		return true
+	}
+	return false
+}
+
+// Use adds a new function to the middleware stack
+func (sn *Server) Use(f func(*Request, func())) {
+	if sn.middleWare == nil {
+		sn.middleWare = make([]Middleware, 0)
+	}
+	middle := new(Middleware)
+	middle.middleFunc = f
+	sn.middleWare = append(sn.middleWare, *middle)
+}
+
+// Internal method that runs the middleware
+func (sn *Server) runMiddleware(req *Request) bool {
+	stackFinished := true
+	for m := range sn.middleWare {
+		nextCalled := false
+		sn.middleWare[m].middleFunc(req, func() {
+			nextCalled = true
+		})
+
+		if !nextCalled {
+			stackFinished = false
+			break
+		}
+	}
+
+	return stackFinished
+}
+
+// SetShutDownHandler implements function called when SIGTERM signal is received
+func (sn *Server) SetShutDownHandler(shutdownFunc func()) {
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	for {
+		select {
+		case <-sigs:
+			err := sn.ln.Close()
+			if err != nil {
+				fmt.Printf("Error closing conn: %s\n", err.Error())
+			}
+
+			if shutdownFunc != nil {
+				shutdownFunc()
+			}
+			os.Exit(0)
+		}
+	}
+}

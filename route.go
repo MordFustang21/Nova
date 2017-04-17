@@ -1,33 +1,14 @@
 package nova
 
-import "strings"
-
+// Route is the construct of a single route pattern
 type Route struct {
-	rq               *Request
-	rs               *Response
-	rr               func(*Request, *Response)
+	routeFunc        func(*Request)
 	routeParamsIndex map[int]string
 	route            string
 }
 
-func (r *Route) buildRouteParams() {
-	routeParams := make(map[string]string)
-	pathParts := strings.Split(r.rq.R.URL.Path, "/")
-
-	for i := range r.routeParamsIndex {
-		name := r.routeParamsIndex[i]
-		if i <= len(pathParts) - 1 {
-			routeParams[name] = pathParts[i]
-		}
-	}
-
-	r.rq.RouteParams = routeParams
-}
-
-func (r *Route) prepare() {
-	r.buildRouteParams()
-}
-
-func (r *Route) call() {
-	r.rr(r.rq, r.rs)
+// call builds the route params & executes the function tied to the route
+func (r *Route) call(req *Request) {
+	req.buildRouteParams(r.route)
+	r.routeFunc(req)
 }
