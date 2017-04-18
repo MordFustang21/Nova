@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
-	"strconv"
 )
 
 var (
@@ -37,9 +36,7 @@ func getDebugMethod(r *Request) func() {
 
 		clientIP := r.RemoteAddr
 		method := r.GetMethod()
-		// TODO: wrap ResponseWriter to get status code
-		status := r.Response.Header().Get("status")
-		statusCode, _ := strconv.Atoi(status)
+		statusCode := r.Response.Code
 		var statusColor, methodColor string
 		if isTerminal(os.Stdin.Fd()) {
 			statusColor = colorForStatus(statusCode)

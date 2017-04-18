@@ -12,7 +12,7 @@ import (
 // Request resembles an incoming request
 type Request struct {
 	*http.Request
-	Response    http.ResponseWriter
+	Response    *Response
 	routeParams map[string]string
 	BaseUrl     string
 	Ctx         context.Context
@@ -34,7 +34,7 @@ type JSONErrors struct {
 func NewRequest(w http.ResponseWriter, r *http.Request) *Request {
 	req := new(Request)
 	req.Request = r
-	req.Response = w
+	req.Response = &Response{w, 200}
 	req.routeParams = make(map[string]string)
 	req.BaseUrl = r.RequestURI
 

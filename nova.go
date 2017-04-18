@@ -86,7 +86,7 @@ func (sn *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/", sn.handler)
 	sn.server = &http.Server{
 		Handler: mux,
-		Addr: addr,
+		Addr:    addr,
 	}
 
 	return sn.server.ListenAndServe()
@@ -133,7 +133,7 @@ func (sn *Server) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.NotFound(w, r)
+	http.NotFound(request.Response, request.Request)
 }
 
 // All adds route for all http methods
