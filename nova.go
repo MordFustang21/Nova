@@ -82,10 +82,8 @@ func (sn *Server) EnableDebug(debug bool) {
 
 // ListenAndServe starts the server
 func (sn *Server) ListenAndServe(addr string) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", sn.handler)
 	sn.server = &http.Server{
-		Handler: mux,
+		Handler: sn,
 		Addr:    addr,
 	}
 
@@ -104,7 +102,7 @@ func (sn *Server) Close() error {
 }
 
 // handler is the main entry point into the router
-func (sn *Server) handler(w http.ResponseWriter, r *http.Request) {
+func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	request := NewRequest(w, r)
 	var logMethod func()
 	if sn.debug {
