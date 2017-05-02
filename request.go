@@ -128,3 +128,11 @@ func (r *Request) buildUrlParams() {
 		}
 	}
 }
+
+func (r *Request) GetPusher() http.Pusher {
+	if pusher, ok := r.Response.ResponseWriter.(http.Pusher); ok {
+		return pusher
+	}
+
+	return nil
+}

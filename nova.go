@@ -68,6 +68,9 @@ type Middleware struct {
 // New returns new supernova router
 func New() *Server {
 	s := new(Server)
+	s.server = &http.Server{
+		Handler: s,
+	}
 	s.cachedStatic = new(CachedStatic)
 	s.cachedStatic.files = make(map[string]*CachedObj)
 	return s
@@ -82,17 +85,13 @@ func (sn *Server) EnableDebug(debug bool) {
 
 // ListenAndServe starts the server
 func (sn *Server) ListenAndServe(addr string) error {
-	sn.server = &http.Server{
-		Handler: sn,
-		Addr:    addr,
-	}
-
+	sn.server.Addr = addr
 	return sn.server.ListenAndServe()
 }
 
 // ServeTLS starts server with ssl
 func (sn *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
-	sn.server = &http.Server{}
+	sn.server.Addr = addr
 	return sn.server.ListenAndServeTLS(certFile, keyFile)
 }
 
