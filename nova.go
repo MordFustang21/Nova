@@ -1,23 +1,20 @@
-// Package supernova is a fasthttp router that implements a radix tree for fast lookups
+// Package nova is a http.Server router that implements a radix tree for fast lookups
+// and adds middleware and other helpful features to build APIs
 package nova
 
 import (
 	"bytes"
-	"fmt"
+	"compress/gzip"
+	"context"
+	"io"
 	"io/ioutil"
 	"mime"
 	"net"
+	"net/http"
 	"os"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-
-	"io"
-	"net/http"
-
-	"github.com/klauspost/compress/gzip"
 )
 
 // Server represents the router and all associated data
@@ -33,9 +30,6 @@ type Server struct {
 	cachedStatic       *CachedStatic
 	maxCachedTime      int64
 	compressionEnabled bool
-
-	// shutdown function called when ctl-c is intercepted
-	shutdownHandler func()
 
 	// debug defines logging for requests
 	debug bool
@@ -106,9 +100,6 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var logMethod func()
 	if sn.debug {
 		logMethod = getDebugMethod(request)
-	}
-
-	if logMethod != nil {
 		defer logMethod()
 	}
 
@@ -118,9 +109,9 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	route := sn.climbTree(request.GetMethod(), request.BaseUrl)
-	if route != nil {
-		route.call(request)
+	node := sn.climbTree(request.GetMethod(), request.RequestURI)
+	if node != nil {
+		node.route.call(request)
 		return
 	}
 
@@ -200,9 +191,7 @@ func (sn *Server) addRoute(method string, route *Route) {
 		}
 
 		if index == len(parts)-1 {
-			node := getNode(true, route)
-			currentNode.children[childKey] = node
-			currentNode = node
+			currentNode.route = route
 		}
 	}
 }
@@ -219,22 +208,22 @@ func getNode(isEdge bool, route *Route) *Node {
 }
 
 // climbTree takes in path and traverses tree to find route
-func (sn *Server) climbTree(method, path string) *Route {
+func (sn *Server) climbTree(method, path string) *Node {
 	parts := strings.Split(path[1:], "/")
-	pathLen := len(parts) - 1
+	pathLen := len(parts)
 
-	currentNode, ok := sn.paths[method]
-	if !ok {
+	var currentNode *Node
+	var ok bool
+	if currentNode, ok = sn.paths[method]; !ok {
 		currentNode, ok = sn.paths[""]
 		if !ok {
 			return nil
 		}
 	}
-	for index, val := range parts {
-		var node *Node
 
-		node = currentNode.children[val]
-		if node == nil {
+	for i := 0; i < pathLen; i++ {
+		node, found := currentNode.children[parts[i]]
+		if !found {
 			node = currentNode.children[""]
 		}
 
@@ -244,21 +233,9 @@ func (sn *Server) climbTree(method, path string) *Route {
 		}
 
 		currentNode = node
-
-		// if at end return current route
-		if index == pathLen {
-			if node, ok := currentNode.children[val]; ok {
-				return node.route
-			}
-
-			if node, ok = currentNode.children[""]; ok {
-				return node.route
-			}
-
-		}
 	}
 
-	return nil
+	return currentNode
 }
 
 // buildRoute creates new Route
@@ -370,22 +347,17 @@ func (sn *Server) runMiddleware(req *Request) bool {
 	return stackFinished
 }
 
-// SetShutDownHandler implements function called when SIGTERM signal is received
-func (sn *Server) SetShutDownHandler(shutdownFunc func()) {
-	sigs := make(chan os.Signal)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	for {
-		select {
-		case <-sigs:
-			err := sn.ln.Close()
-			if err != nil {
-				fmt.Printf("Error closing conn: %s\n", err.Error())
-			}
-
-			if shutdownFunc != nil {
-				shutdownFunc()
-			}
-			os.Exit(0)
-		}
-	}
+// Shutdown gracefully shuts down the server without interrupting any
+// active connections. Shutdown works by first closing all open
+// listeners, then closing all idle connections, and then waiting
+// indefinitely for connections to return to idle and then shut down.
+// If the provided context expires before the shutdown is complete,
+// then the context's error is returned.
+//
+// Shutdown does not attempt to close nor wait for hijacked
+// connections such as WebSockets. The caller of Shutdown should
+// separately notify such long-lived connections of shutdown and wait
+// for them to close, if desired.
+func (sn *Server) Shutdown(ctx context.Context) error {
+	return sn.server.Shutdown(ctx)
 }

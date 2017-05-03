@@ -14,7 +14,6 @@ type Request struct {
 	*http.Request
 	Response    *Response
 	routeParams map[string]string
-	BaseUrl     string
 	Ctx         context.Context
 }
 
@@ -36,14 +35,13 @@ func NewRequest(w http.ResponseWriter, r *http.Request) *Request {
 	req.Request = r
 	req.Response = &Response{w, 200}
 	req.routeParams = make(map[string]string)
-	req.BaseUrl = r.RequestURI
 
 	return req
 }
 
 // Param checks for and returns param or "" if doesn't exist
 func (r *Request) Param(key string) string {
-	if val, ok := r.routeParams["string"]; ok {
+	if val, ok := r.routeParams[key]; ok {
 		return val
 	}
 
@@ -65,7 +63,7 @@ func (r *Request) Error(statusCode int, msg string, errors ...interface{}) error
 // buildRouteParams builds a map of the route params
 func (r *Request) buildRouteParams(route string) {
 	routeParams := r.routeParams
-	reqParts := strings.Split(r.BaseUrl[1:], "/")
+	reqParts := strings.Split(r.RequestURI[1:], "/")
 	routeParts := strings.Split(route[1:], "/")
 
 	for index, val := range routeParts {
@@ -129,6 +127,7 @@ func (r *Request) buildUrlParams() {
 	}
 }
 
+// GetPusher returns http.Pusher interface if exists or nil on HTTP/1.1 connections
 func (r *Request) GetPusher() http.Pusher {
 	if pusher, ok := r.Response.ResponseWriter.(http.Pusher); ok {
 		return pusher

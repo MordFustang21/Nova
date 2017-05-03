@@ -1,8 +1,6 @@
 package nova
 
-import (
-	"testing"
-)
+import "testing"
 
 // Test adding Routes
 func TestServer_All(t *testing.T) {
@@ -134,11 +132,11 @@ func TestServer_climbTree(t *testing.T) {
 		node := s.climbTree(val.Method, val.Path)
 		if val.ExpectNil {
 			if node != nil {
-				t.Errorf("%s Expected nil got *Node", val.Path)
+				t.Error("Got node expected nil")
 			}
 		} else {
-			if node == nil {
-				t.Errorf("%s Expected *Node got nil", val.Path)
+			if node.route == nil {
+				t.Error("Got nil expected route")
 			}
 		}
 	}
@@ -159,5 +157,29 @@ func TestServer_EnableDebug(t *testing.T) {
 
 	if !s.debug {
 		t.Error("Debug mode wasn't set")
+	}
+}
+
+func BenchmarkSingleRoute(b *testing.B) {
+	s := New()
+
+	s.Get("/test", func(r *Request) {
+
+	})
+
+	for i := 0; i < b.N; i++ {
+		s.climbTree("GET", "/test")
+	}
+}
+
+func BenchmarkRouteParams(b *testing.B) {
+	s := New()
+
+	s.Get("/test/:param", func(r *Request) {
+
+	})
+
+	for i := 0; i < b.N; i++ {
+		s.climbTree("GET", "/test/value")
 	}
 }
