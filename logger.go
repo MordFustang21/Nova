@@ -7,7 +7,6 @@ package nova
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 	"time"
 	"unsafe"
@@ -38,10 +37,8 @@ func getDebugMethod(r *Request) func() {
 		method := r.GetMethod()
 		statusCode := r.Response.Code
 		var statusColor, methodColor string
-		if isTerminal(os.Stdin.Fd()) {
-			statusColor = colorForStatus(statusCode)
-			methodColor = colorForMethod(method)
-		}
+		statusColor = colorForStatus(statusCode)
+		methodColor = colorForMethod(method)
 
 		fmt.Printf("[Nova] %v |%s %3d %s| %13v | %s |%s  %s %-7s %s\n",
 			end.Format("2006/01/02 - 15:04:05"),

@@ -25,7 +25,7 @@ type Server struct {
 	// radix tree for looking up routes
 	paths map[string]*Node
 
-	staticDirs         []string
+	staticDirs         []staticAsset
 	middleWare         []Middleware
 	cachedStatic       *CachedStatic
 	maxCachedTime      int64
@@ -38,7 +38,6 @@ type Server struct {
 // Node holds a single route with accompanying children routes
 type Node struct {
 	route    *Route
-	isEdge   bool
 	children map[string]*Node
 }
 
@@ -52,6 +51,15 @@ type CachedObj struct {
 type CachedStatic struct {
 	mutex sync.Mutex
 	files map[string]*CachedObj
+}
+
+// staticAsset contains all info for static dir
+type staticAsset struct {
+	// directory of static files
+	path string
+
+	// used for http2 push
+	pushAssets []string
 }
 
 // Middleware holds all middleware functions
@@ -185,7 +193,7 @@ func (sn *Server) addRoute(method string, route *Route) {
 		if node, ok := currentNode.children[childKey]; ok {
 			currentNode = node
 		} else {
-			node := getNode(false, nil)
+			node := getNode()
 			currentNode.children[childKey] = node
 			currentNode = node
 		}
@@ -197,13 +205,9 @@ func (sn *Server) addRoute(method string, route *Route) {
 }
 
 // getNode builds a new node to be added to the radix tree
-func getNode(isEdge bool, route *Route) *Node {
+func getNode() *Node {
 	node := new(Node)
 	node.children = make(map[string]*Node)
-	if isEdge {
-		node.isEdge = true
-		node.route = route
-	}
 	return node
 }
 
@@ -227,7 +231,7 @@ func (sn *Server) climbTree(method, path string) *Node {
 			node = currentNode.children[""]
 		}
 
-		// path not found return
+		// path not found return to avoid wasting time on long routes
 		if node == nil {
 			return nil
 		}
@@ -238,7 +242,7 @@ func (sn *Server) climbTree(method, path string) *Node {
 	return currentNode
 }
 
-// buildRoute creates new Route
+// buildRoute creates new *Route
 func buildRoute(route string, routeFunc func(*Request)) *Route {
 	routeObj := new(Route)
 	routeObj.routeFunc = routeFunc
@@ -249,13 +253,10 @@ func buildRoute(route string, routeFunc func(*Request)) *Route {
 }
 
 // AddStatic adds static route to be served
-func (sn *Server) AddStatic(dir string) {
-	if sn.staticDirs == nil {
-		sn.staticDirs = make([]string, 0)
-	}
-
+func (sn *Server) AddStatic(dir string, pushableAssets ...string) {
 	if _, err := os.Stat(dir); err == nil {
-		sn.staticDirs = append(sn.staticDirs, dir)
+		asset := staticAsset{path: dir, pushAssets: pushableAssets}
+		sn.staticDirs = append(sn.staticDirs, asset)
 	}
 }
 
@@ -266,15 +267,15 @@ func (sn *Server) EnableGzip(value bool) {
 
 // serveStatic looks up folder and serves static files
 func (sn *Server) serveStatic(req *Request) bool {
-	for i := range sn.staticDirs {
-		staticDir := sn.staticDirs[i]
-		path := staticDir + req.URL.Path
+	for _, staticDir := range sn.staticDirs {
+		path := staticDir.path + req.URL.Path
 
-		// Remove all .. for security TODO: Allow if doesn't go above basedir
+		// Sanitize path
 		path = strings.Replace(path, "..", "", -1)
 
 		// If ends in / default to index.html
-		if strings.HasSuffix(path, "/") {
+
+		if path[len(path)-1] == '/' {
 			path += "index.html"
 		}
 
@@ -308,10 +309,17 @@ func (sn *Server) serveStatic(req *Request) bool {
 		} else {
 			file, err := os.Open(path)
 			if err != nil {
-				// TODO: handle error
+				return false
 			}
 
-			io.Copy(req.Response, file)
+			// Try to push http2 assets associated with folder
+			if p := req.GetPusher(); p != nil {
+				for _, val := range staticDir.pushAssets {
+					p.Push(val, nil)
+				}
+			}
+
+			io.Copy(req, file)
 		}
 
 		return true

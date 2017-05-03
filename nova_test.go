@@ -9,7 +9,15 @@ func TestServer_All(t *testing.T) {
 
 	})
 
-	if s.paths[""].children["test"] == nil {
+	s.All("/test/:param", func(r *Request) {
+
+	})
+
+	if s.paths[""].children["test"].route == nil {
+		t.Error("Failed to insert all route")
+	}
+
+	if s.paths[""].children["test"].children[""].route == nil {
 		t.Error("Failed to insert all route")
 	}
 }

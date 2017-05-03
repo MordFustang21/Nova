@@ -62,20 +62,19 @@ func (r *Request) Error(statusCode int, msg string, errors ...interface{}) error
 
 // buildRouteParams builds a map of the route params
 func (r *Request) buildRouteParams(route string) {
-	routeParams := r.routeParams
 	reqParts := strings.Split(r.RequestURI[1:], "/")
 	routeParts := strings.Split(route[1:], "/")
 
 	for index, val := range routeParts {
 		if val[0] == ':' {
-			routeParams[val[1:]] = reqParts[index]
+			r.routeParams[val[1:]] = reqParts[index]
 		}
 	}
 }
 
 // ReadJSON unmarshals request body into the struct provided
 func (r *Request) ReadJSON(i interface{}) error {
-	encoder := json.NewEncoder(r.Response)
+	encoder := json.NewEncoder(r)
 	return encoder.Encode(i)
 }
 
@@ -83,19 +82,34 @@ func (r *Request) ReadJSON(i interface{}) error {
 func (r *Request) Send(data interface{}) (int, error) {
 	switch v := data.(type) {
 	case []byte:
-		return r.Response.Write(v)
+		return r.Write(v)
 	case string:
-		return r.Response.Write([]byte(v))
+		return r.Write([]byte(v))
 	case error:
-		return r.Response.Write([]byte(v.Error()))
+		return r.Write([]byte(v.Error()))
 	}
 
 	return 0, errors.New("unsupported type")
 }
 
+// Write implements the Writer interface for http.Request.Body
+func (r *Request) Write(b []byte) (int, error) {
+	return r.Response.Write(b)
+}
+
+// Read implements reader for http.Request
+func (r *Request) Read(p []byte) (int, error) {
+	return r.Body.Read(p)
+}
+
+// Close implements Closer interface for http.Request.Body
+func (r *Request) Close() error {
+	return r.Request.Body.Close()
+}
+
 // JSON marshals the given interface object and writes the JSON response.
 func (r *Request) JSON(code int, obj interface{}) error {
-	encoder := json.NewEncoder(r.Response)
+	encoder := json.NewEncoder(r)
 
 	r.Response.Header().Set("Content-Type", "application/json")
 	r.Response.WriteHeader(code)
