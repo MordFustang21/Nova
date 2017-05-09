@@ -5,7 +5,7 @@ import "testing"
 // Test adding Routes
 func TestServer_All(t *testing.T) {
 	s := New()
-	s.All("/test", func(r *Request) {
+	s.All("/test/", func(r *Request) {
 
 	})
 
@@ -125,6 +125,11 @@ func TestServer_climbTree(t *testing.T) {
 			"/stuff/param1/par/param2",
 			true,
 		},
+		{
+			"POST",
+			"/stuff/",
+			true,
+		},
 	}
 
 	s := New()
@@ -147,6 +152,15 @@ func TestServer_climbTree(t *testing.T) {
 				t.Error("Got nil expected route")
 			}
 		}
+	}
+}
+
+func TestServer_AddStatic(t *testing.T) {
+	s := New()
+	s.AddStatic("/")
+
+	if len(s.staticDirs) != 1 {
+		t.Error("Static dir not added")
 	}
 }
 
