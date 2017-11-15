@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"golang.org/x/net/context"
@@ -14,6 +15,7 @@ type Request struct {
 	*http.Request
 	Response    *Response
 	routeParams map[string]string
+	urlValues   url.Values
 	BaseUrl     string
 	Ctx         context.Context
 }
@@ -36,18 +38,24 @@ func NewRequest(w http.ResponseWriter, r *http.Request) *Request {
 	req.Request = r
 	req.Response = &Response{w, 200}
 	req.routeParams = make(map[string]string)
+	req.urlValues = r.URL.Query()
 	req.BaseUrl = r.RequestURI
 
 	return req
 }
 
-// Param checks for and returns param or "" if doesn't exist
-func (r *Request) Param(key string) string {
-	if val, ok := r.routeParams["string"]; ok {
+// RouteParam checks for and returns param or "" if doesn't exist
+func (r *Request) RouteParam(key string) string {
+	if val, ok := r.routeParams[key]; ok {
 		return val
 	}
 
 	return ""
+}
+
+// QueryParam checks for and returns param or "" if doesn't exist
+func (r *Request) QueryParam(key string) string {
+	return r.urlValues.Get(key)
 }
 
 // Error allows an easy method to set the RESTful standard error response
@@ -77,31 +85,32 @@ func (r *Request) buildRouteParams(route string) {
 
 // ReadJSON unmarshals request body into the struct provided
 func (r *Request) ReadJSON(i interface{}) error {
-	encoder := json.NewEncoder(r.Response)
-	return encoder.Encode(i)
+	return json.NewDecoder(r.Request.Body).Decode(i)
 }
 
 // Send writes the data to the response body
-func (r *Request) Send(data interface{}) (int, error) {
+func (r *Request) Send(data interface{}) error {
+	var err error
+
 	switch v := data.(type) {
 	case []byte:
-		return r.Response.Write(v)
+		_, err = r.Response.Write(v)
 	case string:
-		return r.Response.Write([]byte(v))
+		_, err = r.Response.Write([]byte(v))
 	case error:
-		return r.Response.Write([]byte(v.Error()))
+		_, err = r.Response.Write([]byte(v.Error()))
+	default:
+		err = errors.New("unsupported type Send type")
 	}
 
-	return 0, errors.New("unsupported type")
+	return err
 }
 
 // JSON marshals the given interface object and writes the JSON response.
 func (r *Request) JSON(code int, obj interface{}) error {
-	encoder := json.NewEncoder(r.Response)
-
 	r.Response.Header().Set("Content-Type", "application/json")
-	r.Response.WriteHeader(code)
-	return encoder.Encode(obj)
+	r.StatusCode(code)
+	return json.NewEncoder(r.Response).Encode(obj)
 }
 
 // GetMethod provides a simple way to return the request method type as a string
@@ -109,22 +118,7 @@ func (r *Request) GetMethod() string {
 	return r.Method
 }
 
-// buildUrlParams builds url params and returns base route
-func (r *Request) buildUrlParams() {
-	reqUrl := string(r.RequestURI)
-	baseParts := strings.Split(reqUrl, "?")
-
-	if len(baseParts) == 0 {
-		return
-	}
-
-	params := strings.Join(baseParts[1:], "")
-	paramParts := strings.Split(params, "&")
-
-	for i := range paramParts {
-		keyValue := strings.Split(paramParts[i], "=")
-		if len(keyValue) > 1 {
-			r.routeParams[keyValue[0]] = keyValue[1]
-		}
-	}
+// StatusCode sets the status code header
+func (r *Request) StatusCode(c int) {
+	r.Response.WriteHeader(c)
 }

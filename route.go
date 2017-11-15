@@ -2,7 +2,7 @@ package nova
 
 // Route is the construct of a single route pattern
 type Route struct {
-	routeFunc        func(*Request)
+	routeFunc        RequestFunc
 	routeParamsIndex map[int]string
 	route            string
 }

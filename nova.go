@@ -1,23 +1,12 @@
-// Package supernova is a fasthttp router that implements a radix tree for fast lookups
+// Package nova is a router for default http
 package nova
 
 import (
-	"bytes"
-	"fmt"
-	"io/ioutil"
-	"mime"
 	"net"
-	"os"
-	"os/signal"
+	"net/http"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
-
-	"io"
-	"net/http"
-
-	"github.com/klauspost/compress/gzip"
 )
 
 // Server represents the router and all associated data
@@ -26,20 +15,15 @@ type Server struct {
 	ln     net.Listener
 
 	// radix tree for looking up routes
-	paths map[string]*Node
-
-	staticDirs         []string
-	middleWare         []Middleware
-	cachedStatic       *CachedStatic
-	maxCachedTime      int64
-	compressionEnabled bool
-
-	// shutdown function called when ctl-c is intercepted
-	shutdownHandler func()
+	paths      map[string]*Node
+	middleWare []Middleware
 
 	// debug defines logging for requests
 	debug bool
 }
+
+// RequestFunc is the callback used in all handler func
+type RequestFunc func(req *Request)
 
 // Node holds a single route with accompanying children routes
 type Node struct {
@@ -68,8 +52,6 @@ type Middleware struct {
 // New returns new supernova router
 func New() *Server {
 	s := new(Server)
-	s.cachedStatic = new(CachedStatic)
-	s.cachedStatic.files = make(map[string]*CachedObj)
 	return s
 }
 
@@ -90,9 +72,12 @@ func (sn *Server) ListenAndServe(addr string) error {
 	return sn.server.ListenAndServe()
 }
 
-// ServeTLS starts server with ssl
+// ListenAndServeTLS starts server with ssl
 func (sn *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
-	sn.server = &http.Server{}
+	sn.server = &http.Server{
+		Handler: sn,
+		Addr: addr,
+	}
 	return sn.server.ListenAndServeTLS(certFile, keyFile)
 }
 
@@ -119,15 +104,9 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	route := sn.climbTree(request.GetMethod(), request.BaseUrl)
+	route := sn.climbTree(request.GetMethod(), request.URL.Path)
 	if route != nil {
 		route.call(request)
-		return
-	}
-
-	// Check for static file
-	served := sn.serveStatic(request)
-	if served {
 		return
 	}
 
@@ -135,32 +114,32 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // All adds route for all http methods
-func (sn *Server) All(route string, routeFunc func(*Request)) {
+func (sn *Server) All(route string, routeFunc RequestFunc) {
 	sn.addRoute("", buildRoute(route, routeFunc))
 }
 
 // Get adds only GET method to route
-func (sn *Server) Get(route string, routeFunc func(*Request)) {
+func (sn *Server) Get(route string, routeFunc RequestFunc) {
 	sn.addRoute("GET", buildRoute(route, routeFunc))
 }
 
 // Post adds only POST method to route
-func (sn *Server) Post(route string, routeFunc func(*Request)) {
+func (sn *Server) Post(route string, routeFunc RequestFunc) {
 	sn.addRoute("POST", buildRoute(route, routeFunc))
 }
 
 // Put adds only PUT method to route
-func (sn *Server) Put(route string, routeFunc func(*Request)) {
+func (sn *Server) Put(route string, routeFunc RequestFunc) {
 	sn.addRoute("PUT", buildRoute(route, routeFunc))
 }
 
 // Delete adds only DELETE method to route
-func (sn *Server) Delete(route string, routeFunc func(*Request)) {
+func (sn *Server) Delete(route string, routeFunc RequestFunc) {
 	sn.addRoute("DELETE", buildRoute(route, routeFunc))
 }
 
 // Restricted adds route that is restricted by method
-func (sn *Server) Restricted(method, route string, routeFunc func(*Request)) {
+func (sn *Server) Restricted(method, route string, routeFunc RequestFunc) {
 	sn.addRoute(method, buildRoute(route, routeFunc))
 }
 
@@ -221,7 +200,14 @@ func getNode(isEdge bool, route *Route) *Node {
 
 // climbTree takes in path and traverses tree to find route
 func (sn *Server) climbTree(method, path string) *Route {
-	parts := strings.Split(path[1:], "/")
+	// strip slashes
+	if path[len(path)-1] == '/' {
+		path = path[1 : len(path)-1]
+	} else {
+		path = path[1:]
+	}
+
+	parts := strings.Split(path, "/")
 	pathLen := len(parts) - 1
 
 	currentNode, ok := sn.paths[method]
@@ -240,8 +226,10 @@ func (sn *Server) climbTree(method, path string) *Route {
 		}
 
 		// path not found return
-		if node == nil {
+		if node == nil && method == "" {
 			return nil
+		} else if node == nil {
+			return sn.climbTree("", path)
 		}
 
 		currentNode = node
@@ -263,7 +251,7 @@ func (sn *Server) climbTree(method, path string) *Route {
 }
 
 // buildRoute creates new Route
-func buildRoute(route string, routeFunc func(*Request)) *Route {
+func buildRoute(route string, routeFunc RequestFunc) *Route {
 	routeObj := new(Route)
 	routeObj.routeFunc = routeFunc
 	routeObj.routeParamsIndex = make(map[int]string)
@@ -272,79 +260,8 @@ func buildRoute(route string, routeFunc func(*Request)) *Route {
 	return routeObj
 }
 
-// AddStatic adds static route to be served
-func (sn *Server) AddStatic(dir string) {
-	if sn.staticDirs == nil {
-		sn.staticDirs = make([]string, 0)
-	}
-
-	if _, err := os.Stat(dir); err == nil {
-		sn.staticDirs = append(sn.staticDirs, dir)
-	}
-}
-
-// EnableGzip turns on Gzip compression for static
-func (sn *Server) EnableGzip(value bool) {
-	sn.compressionEnabled = value
-}
-
-// serveStatic looks up folder and serves static files
-func (sn *Server) serveStatic(req *Request) bool {
-	for i := range sn.staticDirs {
-		staticDir := sn.staticDirs[i]
-		path := staticDir + req.URL.Path
-
-		// Remove all .. for security TODO: Allow if doesn't go above basedir
-		path = strings.Replace(path, "..", "", -1)
-
-		// If ends in / default to index.html
-		if strings.HasSuffix(path, "/") {
-			path += "index.html"
-		}
-
-		stat, err := os.Stat(path)
-		if err != nil {
-			continue
-		}
-
-		// Set mime type
-		extensionParts := strings.Split(path, ".")
-		ext := extensionParts[len(extensionParts)-1]
-		mType := mime.TypeByExtension("." + ext)
-
-		if mType != "" {
-			req.Response.Header().Set("Content-Type", mType)
-		}
-
-		if sn.compressionEnabled && stat.Size() < 10000000 {
-			var b bytes.Buffer
-			writer := gzip.NewWriter(&b)
-
-			data, err := ioutil.ReadFile(path)
-			if err != nil {
-				println("Unable to read: " + err.Error())
-			}
-
-			writer.Write(data)
-			writer.Close()
-			req.Response.Header().Set("Content-Encoding", "gzip")
-			req.Send(b.String())
-		} else {
-			file, err := os.Open(path)
-			if err != nil {
-				// TODO: handle error
-			}
-
-			io.Copy(req.Response, file)
-		}
-
-		return true
-	}
-	return false
-}
-
 // Use adds a new function to the middleware stack
-func (sn *Server) Use(f func(*Request, func())) {
+func (sn *Server) Use(f func(req *Request, next func())) {
 	if sn.middleWare == nil {
 		sn.middleWare = make([]Middleware, 0)
 	}
@@ -369,24 +286,4 @@ func (sn *Server) runMiddleware(req *Request) bool {
 	}
 
 	return stackFinished
-}
-
-// SetShutDownHandler implements function called when SIGTERM signal is received
-func (sn *Server) SetShutDownHandler(shutdownFunc func()) {
-	sigs := make(chan os.Signal)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	for {
-		select {
-		case <-sigs:
-			err := sn.ln.Close()
-			if err != nil {
-				fmt.Printf("Error closing conn: %s\n", err.Error())
-			}
-
-			if shutdownFunc != nil {
-				shutdownFunc()
-			}
-			os.Exit(0)
-		}
-	}
 }

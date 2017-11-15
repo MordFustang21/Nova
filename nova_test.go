@@ -1,51 +1,107 @@
 package nova
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"io/ioutil"
+	"strings"
+	"encoding/json"
 )
 
 // Test adding Routes
 func TestServer_All(t *testing.T) {
+	msg := "all hit"
+	endpoint := "/test/"
 	s := New()
-	s.All("/test", func(r *Request) {
-
+	s.All(endpoint, func(r *Request) {
+		r.Send(msg)
 	})
 
-	if s.paths[""].children["test"] == nil {
-		t.Error("Failed to insert all route")
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	data, _ := ioutil.ReadAll(res.Body)
+	res.Body.Close()
+
+	if string(data) != msg {
+		t.Errorf("All route not hit expected %s got %s", msg, string(data))
 	}
 }
 
 func TestServer_Get(t *testing.T) {
+	endpoint := "/test"
 	s := New()
-	s.Get("/test", func(r *Request) {
-
+	s.Get(endpoint, func(r *Request) {
 	})
 
-	if s.paths["GET"].children["test"] == nil {
-		t.Error("Failed to insert GET route")
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Error("couldn't get 200 from endpoint")
 	}
 }
 
 func TestServer_Put(t *testing.T) {
+	endpoint := "/test"
 	s := New()
-	s.Put("/test", func(r *Request) {
-
+	s.Put(endpoint, func(r *Request) {
 	})
 
-	if s.paths["PUT"].children["test"] == nil {
-		t.Error("Failed to insert PUT route")
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	client := http.Client{}
+	req, _ := http.NewRequest(http.MethodPut, ts.URL + endpoint, strings.NewReader("hello"))
+	res, err := client.Do(req)
+	if err != nil {
+		t.Errorf("couldn't make request %s", err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Error("couldn't get 200 from endpoint")
 	}
 }
 
 func TestServer_Post(t *testing.T) {
+	endpoint := "/test"
 	s := New()
-	s.Post("/test", func(r *Request) {
+	s.Post(endpoint, func(r *Request) {
+		var ts struct {
+			Hello string
+		}
 
+		r.ReadJSON(&ts)
+
+		if ts.Hello != "world" {
+			r.StatusCode(http.StatusBadRequest)
+			r.Send("bad data")
+		}
 	})
 
-	if s.paths["POST"].children["test"] == nil {
-		t.Error("Failed to insert POST route")
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	client := http.Client{}
+	req, _ := http.NewRequest(http.MethodPost, ts.URL + endpoint, strings.NewReader(`{"Hello": "world"}`))
+	res, err := client.Do(req)
+	if err != nil {
+		t.Errorf("couldn't make request %s", err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Error("couldn't get 200 from endpoint")
 	}
 }
 func TestServer_Delete(t *testing.T) {
@@ -62,12 +118,53 @@ func TestServer_Delete(t *testing.T) {
 // Check middleware
 func TestServer_Use(t *testing.T) {
 	s := New()
-	s.Use(func(r *Request, next func()) {
+	s.Use(func(req *Request, next func()) {
+		req.Response.Header().Set("Content-Type", "application/json")
+	})
+
+	s.Get("/json", func(req *Request) {
 
 	})
 
-	if len(s.middleWare) != 1 {
-		t.Error("Middlware wasn't added")
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + "/json")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.Header.Get("Content-Type") != "application/json" {
+		t.Error("middleware failed Content-Type not set")
+	}
+}
+
+func TestServer_UseNext(t *testing.T) {
+	msg := "json hit"
+	endpoint := "/json"
+	s := New()
+	s.Use(func(req *Request, next func()) {
+		req.Response.Header().Set("Content-Type", "application/json")
+		next()
+	})
+
+	s.Get(endpoint, func(req *Request) {
+		req.Send(msg)
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	data, _ := ioutil.ReadAll(res.Body)
+	res.Body.Close()
+
+	if res.Header.Get("Content-Type") != "application/json" && string(data) != msg {
+		t.Error("middleware failed Content-Type not set")
 	}
 }
 
@@ -97,6 +194,133 @@ func TestMultipleChildren(t *testing.T) {
 	}
 }
 
+func TestRouteParam(t *testing.T) {
+	param := "world"
+	endpoint := "/hello/:param"
+	s := New()
+	s.Get(endpoint, func(r *Request) {
+		r.Send(r.RouteParam("param"))
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + "/hello/world")
+	if err != nil {
+		t.Error(err)
+	}
+
+	data, _ := ioutil.ReadAll(res.Body)
+	res.Body.Close()
+
+	if string(data) != param {
+		t.Errorf("All route not hit expected %s got %s", param, string(data))
+	}
+}
+
+func TestQueryParam(t *testing.T) {
+	param := "earth"
+	endpoint := "/hello/"
+	s := New()
+	s.Get(endpoint, func(r *Request) {
+		r.Send(r.QueryParam("world"))
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + "/hello/?world=earth")
+	if err != nil {
+		t.Error(err)
+	}
+
+	data, _ := ioutil.ReadAll(res.Body)
+	res.Body.Close()
+
+	if string(data) != param {
+		t.Errorf("All route not hit expected %s got %s", param, string(data))
+	}
+}
+
+func TestRequest_JSON(t *testing.T) {
+	type holder struct {
+		Hello string
+	}
+	endpoint := "/test"
+	s := New()
+	s.Get(endpoint, func(r *Request) {
+		ts := holder{
+			"world",
+		}
+
+		r.JSON(200, ts)
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	var h holder
+	err = json.NewDecoder(res.Body).Decode(&h)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if h.Hello != "world" {
+		t.Error("failed to get and parse JSON")
+	}
+}
+
+func TestRequest_Error(t *testing.T) {
+	endpoint := "/test"
+	s := New()
+	s.Get(endpoint, func(r *Request) {
+		r.Error(http.StatusNotImplemented, "method not ready")
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	var e JSONErrors
+	err = json.NewDecoder(res.Body).Decode(&e)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != http.StatusNotImplemented {
+		t.Errorf("got wrong status code expected %d got %d", http.StatusNotImplemented, res.StatusCode)
+	}
+}
+
+func Test404(t *testing.T) {
+	endpoint := "/hello/:param"
+	s := New()
+	s.All(endpoint, func(r *Request) {
+		r.Send(r.RouteParam("param"))
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + "/hello/world/more/stuff")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 404 {
+		t.Errorf("expected 404 got %d", res.StatusCode)
+	}
+}
+
 // Test finding Routes
 func TestServer_climbTree(t *testing.T) {
 	cases := []struct {
@@ -111,7 +335,7 @@ func TestServer_climbTree(t *testing.T) {
 		},
 		{
 			"GET",
-			"/stuff/param1/params/param2",
+			"/stuff/param1/params/param2/",
 			false,
 		},
 		{
@@ -132,24 +356,11 @@ func TestServer_climbTree(t *testing.T) {
 
 	for _, val := range cases {
 		node := s.climbTree(val.Method, val.Path)
-		if val.ExpectNil {
-			if node != nil {
-				t.Errorf("%s Expected nil got *Node", val.Path)
-			}
-		} else {
-			if node == nil {
-				t.Errorf("%s Expected *Node got nil", val.Path)
-			}
+		if val.ExpectNil && node != nil {
+			t.Errorf("%s Expected nil got *Node", val.Path)
+		} else if !val.ExpectNil && node == nil {
+			t.Errorf("%s Expected *Node got nil", val.Path)
 		}
-	}
-}
-
-func TestServer_EnableGzip(t *testing.T) {
-	s := New()
-	s.EnableGzip(true)
-
-	if !s.compressionEnabled {
-		t.Error("EnableGzip wasn't set")
 	}
 }
 

@@ -1,6 +1,8 @@
 package nova
 
-import "net/http"
+import (
+	"net/http"
+)
 
 // Response is used to wrap http.ResponseWriter to collect response status code
 type Response struct {
