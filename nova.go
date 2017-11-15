@@ -1,12 +1,11 @@
-// Package nova is a router for default http
+// Package nova is an HTTP request multiplexer. It matches the URL of each incoming request against a list of registered patterns
+// and calls the handler for the pattern that most closely matches the URL. As well as providing some nice logging and response features.
 package nova
 
 import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 )
 
 // Server represents the router and all associated data
@@ -30,18 +29,6 @@ type Node struct {
 	route    *Route
 	isEdge   bool
 	children map[string]*Node
-}
-
-// CachedObj represents a static asset
-type CachedObj struct {
-	data       []byte
-	timeCached time.Time
-}
-
-// CachedStatic holds all cached static assets in memory
-type CachedStatic struct {
-	mutex sync.Mutex
-	files map[string]*CachedObj
 }
 
 // Middleware holds all middleware functions
