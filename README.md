@@ -4,10 +4,10 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordfustang21/nova)](https://goreportcard.com/report/github.com/mordfustang21/nova)
 [![Build Status](https://travis-ci.org/MordFustang21/nova.svg)](https://travis-ci.org/MordFustang21/nova)
 
-nova is a mux for http While we don't claim to be the best or fastest we are still very fast thanks to [fasthttp](https://github.com/valyala/fasthttp)
-and help you be highly productive by providing easy to use tools that help build up your api quickly.
+nova is a mux for http While we don't claim to be the best or fastest we provide a lot of tools and features that enable
+you to be highly productive help build up your api quickly.
 
-*Note nova's exported API interface will continue to change in unpredictable, backwards-incompatible ways until we tag a v2.0.0 release.
+*Note nova's exported API interface will continue to change in unpredictable, backwards-incompatible ways until we tag a v1.0.0 release.
 
 ### Start using it
 1. Download and install
