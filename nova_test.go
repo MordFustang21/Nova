@@ -1,12 +1,12 @@
 package nova
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"testing"
-	"io/ioutil"
 	"strings"
-	"encoding/json"
+	"testing"
 )
 
 // Test adding Routes
@@ -63,7 +63,7 @@ func TestServer_Put(t *testing.T) {
 	defer ts.Close()
 
 	client := http.Client{}
-	req, _ := http.NewRequest(http.MethodPut, ts.URL + endpoint, strings.NewReader("hello"))
+	req, _ := http.NewRequest(http.MethodPut, ts.URL+endpoint, strings.NewReader("hello"))
 	res, err := client.Do(req)
 	if err != nil {
 		t.Errorf("couldn't make request %s", err)
@@ -94,7 +94,7 @@ func TestServer_Post(t *testing.T) {
 	defer ts.Close()
 
 	client := http.Client{}
-	req, _ := http.NewRequest(http.MethodPost, ts.URL + endpoint, strings.NewReader(`{"Hello": "world"}`))
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+endpoint, strings.NewReader(`{"Hello": "world"}`))
 	res, err := client.Do(req)
 	if err != nil {
 		t.Errorf("couldn't make request %s", err)

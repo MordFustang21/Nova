@@ -76,7 +76,7 @@ func (sn *Server) ListenAndServe(addr string) error {
 func (sn *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	sn.server = &http.Server{
 		Handler: sn,
-		Addr: addr,
+		Addr:    addr,
 	}
 	return sn.server.ListenAndServeTLS(certFile, keyFile)
 }
@@ -202,7 +202,7 @@ func getNode(isEdge bool, route *Route) *Node {
 func (sn *Server) climbTree(method, path string) *Route {
 	// strip slashes
 	if path[len(path)-1] == '/' {
-		path = path[1 : len(path)-1]
+		path = path[1: len(path)-1]
 	} else {
 		path = path[1:]
 	}
