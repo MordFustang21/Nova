@@ -202,7 +202,7 @@ func getNode(isEdge bool, route *Route) *Node {
 func (sn *Server) climbTree(method, path string) *Route {
 	// strip slashes
 	if path[len(path)-1] == '/' {
-		path = path[1: len(path)-1]
+		path = path[1 : len(path)-1]
 	} else {
 		path = path[1:]
 	}
