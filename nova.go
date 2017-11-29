@@ -3,16 +3,13 @@
 package nova
 
 import (
-	"net"
 	"net/http"
+	"path"
 	"strings"
 )
 
 // Server represents the router and all associated data
 type Server struct {
-	server *http.Server
-	ln     net.Listener
-
 	// radix tree for looking up routes
 	paths      map[string]*Node
 	middleWare []Middleware
@@ -22,12 +19,11 @@ type Server struct {
 }
 
 // RequestFunc is the callback used in all handler func
-type RequestFunc func(req *Request)
+type RequestFunc func(req *Request) error
 
 // Node holds a single route with accompanying children routes
 type Node struct {
 	route    *Route
-	isEdge   bool
 	children map[string]*Node
 }
 
@@ -39,6 +35,7 @@ type Middleware struct {
 // New returns new supernova router
 func New() *Server {
 	s := new(Server)
+	s.paths = make(map[string]*Node)
 	return s
 }
 
@@ -47,30 +44,6 @@ func (sn *Server) EnableDebug(debug bool) {
 	if debug {
 		sn.debug = true
 	}
-}
-
-// ListenAndServe starts the server
-func (sn *Server) ListenAndServe(addr string) error {
-	sn.server = &http.Server{
-		Handler: sn,
-		Addr:    addr,
-	}
-
-	return sn.server.ListenAndServe()
-}
-
-// ListenAndServeTLS starts server with ssl
-func (sn *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
-	sn.server = &http.Server{
-		Handler: sn,
-		Addr:    addr,
-	}
-	return sn.server.ListenAndServeTLS(certFile, keyFile)
-}
-
-// Close closes existing listener
-func (sn *Server) Close() error {
-	return sn.ln.Close()
 }
 
 // handler is the main entry point into the router
@@ -91,13 +64,13 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	route := sn.climbTree(request.GetMethod(), request.URL.Path)
+	route := sn.climbTree(request.GetMethod(), cleanPath(request.URL.Path))
 	if route != nil {
 		route.call(request)
 		return
 	}
 
-	http.NotFound(request.Response, request.Request)
+	http.NotFound(request.ResponseWriter, request.Request)
 }
 
 // All adds route for all http methods
@@ -132,70 +105,47 @@ func (sn *Server) Restricted(method, route string, routeFunc RequestFunc) {
 
 // addRoute takes route and method and adds it to route tree
 func (sn *Server) addRoute(method string, route *Route) {
-	routeStr := route.route
-	if routeStr[len(routeStr)-1] == '/' {
-		routeStr = routeStr[:len(routeStr)-1]
-		route.route = routeStr
-	}
-	if sn.paths == nil {
-		sn.paths = make(map[string]*Node)
-	}
-
 	if sn.paths[method] == nil {
-		node := new(Node)
-		node.children = make(map[string]*Node)
-		sn.paths[method] = node
+		sn.paths[method] = newNode()
 	}
 
-	parts := strings.Split(routeStr[1:], "/")
-
+	parts := strings.Split(route.route, "/")
 	currentNode := sn.paths[method]
 	for index, val := range parts {
 		childKey := val
-		if val[0] == ':' {
-			childKey = ""
-		} else {
-			childKey = val
+		if len(val) > 1 {
+			if val[0] == ':' {
+				childKey = ""
+			}
 		}
 
+		// see if node already exists
 		if node, ok := currentNode.children[childKey]; ok {
 			currentNode = node
 		} else {
-			node := getNode(false, nil)
+			node := newNode()
 			currentNode.children[childKey] = node
 			currentNode = node
 		}
 
 		if index == len(parts)-1 {
-			node := getNode(true, route)
+			node := newNode()
+			node.route = route
 			currentNode.children[childKey] = node
-			currentNode = node
 		}
 	}
 }
 
-// getNode builds a new node to be added to the radix tree
-func getNode(isEdge bool, route *Route) *Node {
-	node := new(Node)
-	node.children = make(map[string]*Node)
-	if isEdge {
-		node.isEdge = true
-		node.route = route
-	}
-	return node
+func newNode() *Node {
+	n := new(Node)
+	n.children = make(map[string]*Node)
+
+	return n
 }
 
 // climbTree takes in path and traverses tree to find route
 func (sn *Server) climbTree(method, path string) *Route {
-	// strip slashes
-	if path[len(path)-1] == '/' {
-		path = path[1 : len(path)-1]
-	} else {
-		path = path[1:]
-	}
-
 	parts := strings.Split(path, "/")
-	pathLen := len(parts) - 1
 
 	currentNode, ok := sn.paths[method]
 	if !ok {
@@ -204,34 +154,27 @@ func (sn *Server) climbTree(method, path string) *Route {
 			return nil
 		}
 	}
-	for index, val := range parts {
-		var node *Node
 
+	for _, val := range parts {
+		var node *Node
 		node = currentNode.children[val]
 		if node == nil {
 			node = currentNode.children[""]
 		}
 
-		// path not found return
-		if node == nil && method == "" {
+		if node == nil {
 			return nil
-		} else if node == nil {
-			return sn.climbTree("", path)
 		}
 
 		currentNode = node
+	}
 
-		// if at end return current route
-		if index == pathLen {
-			if node, ok := currentNode.children[val]; ok {
-				return node.route
-			}
+	if node, ok := currentNode.children[parts[len(parts)-1]]; ok {
+		return node.route
+	}
 
-			if node, ok = currentNode.children[""]; ok {
-				return node.route
-			}
-
-		}
+	if node, ok := currentNode.children[""]; ok {
+		return node.route
 	}
 
 	return nil
@@ -242,6 +185,10 @@ func buildRoute(route string, routeFunc RequestFunc) *Route {
 	routeObj := new(Route)
 	routeObj.routeFunc = routeFunc
 	routeObj.routeParamsIndex = make(map[int]string)
+	if route[len(route)-1] == '/' && len(route) > 1 {
+		route = route[:len(route)-1]
+	}
+
 	routeObj.route = route
 
 	return routeObj
@@ -273,4 +220,29 @@ func (sn *Server) runMiddleware(req *Request) bool {
 	}
 
 	return stackFinished
+}
+
+// cleanPath returns the canonical path for p, eliminating . and .. elements.
+// Borrowed from the net/http package.
+func cleanPath(p string) string {
+	if p == "" || p == "/" {
+		return "/"
+	}
+
+	if p[0] != '/' {
+		p = "/" + p
+	}
+
+	if p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
+	}
+
+	np := path.Clean(p)
+	// path.Clean removes trailing slash except for root;
+	// put the trailing slash back if necessary.
+	if p[len(p)-1] == '/' && np != "/" {
+		np += "/"
+	}
+
+	return np
 }

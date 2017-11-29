@@ -12,10 +12,10 @@ import (
 // Test adding Routes
 func TestServer_All(t *testing.T) {
 	msg := "all hit"
-	endpoint := "/test/"
+	endpoint := "/test"
 	s := New()
-	s.All(endpoint, func(r *Request) {
-		r.Send(msg)
+	s.All(endpoint, func(r *Request) error {
+		return r.Send(msg)
 	})
 
 	ts := httptest.NewServer(s)
@@ -34,10 +34,11 @@ func TestServer_All(t *testing.T) {
 	}
 }
 
-func TestServer_Get(t *testing.T) {
-	endpoint := "/test"
+func TestServer_GetBase(t *testing.T) {
+	endpoint := "/"
 	s := New()
-	s.Get(endpoint, func(r *Request) {
+	s.Get(endpoint, func(r *Request) error {
+		return nil
 	})
 
 	ts := httptest.NewServer(s)
@@ -53,10 +54,101 @@ func TestServer_Get(t *testing.T) {
 	}
 }
 
+func TestServer_GetBase404(t *testing.T) {
+	s := New()
+	s.Get("/test", func(r *Request) error {
+		return nil
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 404 {
+		t.Error("couldn't get 200 from endpoint")
+	}
+}
+
+func TestServer_GetEndpoint(t *testing.T) {
+	endpoint := "/test"
+	s := New()
+	s.Get(endpoint, func(r *Request) error {
+		return nil
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Error("couldn't get 200 from endpoint")
+	}
+}
+
+func TestServer_GetParam(t *testing.T) {
+	endpoint := "/test/:param"
+	s := New()
+	s.Get(endpoint, func(r *Request) error {
+		if r.RouteParam("param") != "world" {
+			t.Error("couldn't get param")
+		}
+		return nil
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + "/test/world")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Error("couldn't get 200 from endpoint")
+	}
+}
+
+func TestServer_GetPartialRoutes(t *testing.T) {
+	endpoint := "/test/:param"
+	s := New()
+	s.Get(endpoint, func(r *Request) error {
+		if r.RouteParam("param") != "world" {
+			t.Error("couldn't get param")
+		}
+		return nil
+	})
+
+	s.Get("/test/stuff/hello/", func(req *Request) error {
+		return nil
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	//TODO: if route ends with / and route isn't defined with ending / not found
+	res, err := http.Get(ts.URL + "/test/stuff/hello")
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Error("couldn't get 200 from endpoint")
+	}
+}
+
 func TestServer_Put(t *testing.T) {
 	endpoint := "/test"
 	s := New()
-	s.Put(endpoint, func(r *Request) {
+	s.Put(endpoint, func(r *Request) error {
+		return nil
 	})
 
 	ts := httptest.NewServer(s)
@@ -77,7 +169,7 @@ func TestServer_Put(t *testing.T) {
 func TestServer_Post(t *testing.T) {
 	endpoint := "/test"
 	s := New()
-	s.Post(endpoint, func(r *Request) {
+	s.Post(endpoint, func(r *Request) error {
 		var ts struct {
 			Hello string
 		}
@@ -86,8 +178,10 @@ func TestServer_Post(t *testing.T) {
 
 		if ts.Hello != "world" {
 			r.StatusCode(http.StatusBadRequest)
-			r.Send("bad data")
+			return r.Send("bad data")
 		}
+
+		return nil
 	})
 
 	ts := httptest.NewServer(s)
@@ -104,26 +198,16 @@ func TestServer_Post(t *testing.T) {
 		t.Error("couldn't get 200 from endpoint")
 	}
 }
-func TestServer_Delete(t *testing.T) {
-	s := New()
-	s.Delete("/test", func(r *Request) {
-
-	})
-
-	if s.paths["DELETE"].children["test"] == nil {
-		t.Error("Failed to insert DELETE route")
-	}
-}
 
 // Check middleware
 func TestServer_Use(t *testing.T) {
 	s := New()
 	s.Use(func(req *Request, next func()) {
-		req.Response.Header().Set("Content-Type", "application/json")
+		req.Header().Set("Content-Type", "application/json")
 	})
 
-	s.Get("/json", func(req *Request) {
-
+	s.Get("/json", func(req *Request) error {
+		return nil
 	})
 
 	ts := httptest.NewServer(s)
@@ -144,12 +228,12 @@ func TestServer_UseNext(t *testing.T) {
 	endpoint := "/json"
 	s := New()
 	s.Use(func(req *Request, next func()) {
-		req.Response.Header().Set("Content-Type", "application/json")
+		req.Header().Set("Content-Type", "application/json")
 		next()
 	})
 
-	s.Get(endpoint, func(req *Request) {
-		req.Send(msg)
+	s.Get(endpoint, func(req *Request) error {
+		return req.Send(msg)
 	})
 
 	ts := httptest.NewServer(s)
@@ -168,38 +252,12 @@ func TestServer_UseNext(t *testing.T) {
 	}
 }
 
-func TestServer_Restricted(t *testing.T) {
-	s := New()
-	s.Restricted("OPTION", "/test", func(*Request) {
-
-	})
-
-	if s.paths["OPTION"].children["test"] == nil {
-		t.Error("Route wasn't restricted to method")
-	}
-}
-
-func TestMultipleChildren(t *testing.T) {
-	s := New()
-	s.All("/test/stuff", func(*Request) {
-
-	})
-
-	s.All("/test/test", func(*Request) {
-
-	})
-
-	if len(s.paths[""].children["test"].children) != 2 {
-		t.Error("Node possibly overwritten")
-	}
-}
-
 func TestRouteParam(t *testing.T) {
 	param := "world"
 	endpoint := "/hello/:param"
 	s := New()
-	s.Get(endpoint, func(r *Request) {
-		r.Send(r.RouteParam("param"))
+	s.Get(endpoint, func(r *Request) error {
+		return r.Send(r.RouteParam("param"))
 	})
 
 	ts := httptest.NewServer(s)
@@ -222,8 +280,8 @@ func TestQueryParam(t *testing.T) {
 	param := "earth"
 	endpoint := "/hello/"
 	s := New()
-	s.Get(endpoint, func(r *Request) {
-		r.Send(r.QueryParam("world"))
+	s.Get(endpoint, func(r *Request) error {
+		return r.Send(r.QueryParam("world"))
 	})
 
 	ts := httptest.NewServer(s)
@@ -248,12 +306,12 @@ func TestRequest_JSON(t *testing.T) {
 	}
 	endpoint := "/test"
 	s := New()
-	s.Get(endpoint, func(r *Request) {
+	s.Get(endpoint, func(r *Request) error {
 		ts := holder{
 			"world",
 		}
 
-		r.JSON(200, ts)
+		return r.JSON(200, ts)
 	})
 
 	ts := httptest.NewServer(s)
@@ -278,8 +336,8 @@ func TestRequest_JSON(t *testing.T) {
 func TestRequest_Error(t *testing.T) {
 	endpoint := "/test"
 	s := New()
-	s.Get(endpoint, func(r *Request) {
-		r.Error(http.StatusNotImplemented, "method not ready")
+	s.Get(endpoint, func(r *Request) error {
+		return r.Error(http.StatusNotImplemented, "method not ready")
 	})
 
 	ts := httptest.NewServer(s)
@@ -304,8 +362,8 @@ func TestRequest_Error(t *testing.T) {
 func Test404(t *testing.T) {
 	endpoint := "/hello/:param"
 	s := New()
-	s.All(endpoint, func(r *Request) {
-		r.Send(r.RouteParam("param"))
+	s.All(endpoint, func(r *Request) error {
+		return r.Send(r.RouteParam("param"))
 	})
 
 	ts := httptest.NewServer(s)
@@ -321,54 +379,23 @@ func Test404(t *testing.T) {
 	}
 }
 
-// Test finding Routes
-func TestServer_climbTree(t *testing.T) {
-	cases := []struct {
-		Method    string
-		Path      string
-		ExpectNil bool
-	}{
-		{
-			"GET",
-			"/test",
-			false,
-		},
-		{
-			"GET",
-			"/stuff/param1/params/param2/",
-			false,
-		},
-		{
-			"GET",
-			"/stuff/param1/par/param2",
-			true,
-		},
-	}
-
-	s := New()
-	s.Get("/test", func(*Request) {
-
-	})
-
-	s.Get("/stuff/:test/params/:more", func(*Request) {
-
-	})
-
-	for _, val := range cases {
-		node := s.climbTree(val.Method, val.Path)
-		if val.ExpectNil && node != nil {
-			t.Errorf("%s Expected nil got *Node", val.Path)
-		} else if !val.ExpectNil && node == nil {
-			t.Errorf("%s Expected *Node got nil", val.Path)
-		}
-	}
-}
-
 func TestServer_EnableDebug(t *testing.T) {
 	s := New()
 	s.EnableDebug(true)
 
 	if !s.debug {
 		t.Error("Debug mode wasn't set")
+	}
+}
+
+func BenchmarkClimbTree(b *testing.B) {
+	m := New()
+
+	m.Get("/test/stuff/world", func(req *Request) error {
+		req.Send("hello")
+		return nil
+	})
+	for i := 0; i < b.N; i++ {
+		m.climbTree("GET", "/test/stuff/world")
 	}
 }

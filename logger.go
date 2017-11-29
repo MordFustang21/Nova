@@ -36,7 +36,7 @@ func getDebugMethod(r *Request) func() {
 
 		clientIP := r.RemoteAddr
 		method := r.GetMethod()
-		statusCode := r.Response.Code
+		statusCode := r.ResponseCode
 		var statusColor, methodColor string
 		if isTerminal(os.Stdin.Fd()) {
 			statusColor = colorForStatus(statusCode)
