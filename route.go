@@ -8,7 +8,7 @@ type Route struct {
 }
 
 // call builds the route params & executes the function tied to the route
-func (r *Route) call(req *Request) {
+func (r *Route) call(req *Request) error {
 	req.buildRouteParams(r.route)
-	r.routeFunc(req)
+	return r.routeFunc(req)
 }

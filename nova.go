@@ -14,12 +14,18 @@ type Server struct {
 	paths      map[string]*Node
 	middleWare []Middleware
 
+	// error callback func
+	errorFunc ErrorFunc
+
 	// debug defines logging for requests
 	debug bool
 }
 
 // RequestFunc is the callback used in all handler func
 type RequestFunc func(req *Request) error
+
+// ErrorFunc is the callback used for errors
+type ErrorFunc func(req *Request, err error)
 
 // Node holds a single route with accompanying children routes
 type Node struct {
@@ -46,6 +52,11 @@ func (sn *Server) EnableDebug(debug bool) {
 	}
 }
 
+// Error sets the callback for errors
+func (sn *Server) Error(f ErrorFunc) {
+	sn.errorFunc = f
+}
+
 // handler is the main entry point into the router
 func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	request := NewRequest(w, r)
@@ -66,7 +77,13 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	route := sn.climbTree(request.GetMethod(), cleanPath(request.URL.Path))
 	if route != nil {
-		route.call(request)
+		err := route.call(request)
+		// if we got error and erroFunc is set pass along
+		if err != nil {
+			if sn.errorFunc != nil {
+				sn.errorFunc(request, err)
+			}
+		}
 		return
 	}
 
