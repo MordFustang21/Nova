@@ -3,11 +3,11 @@ package nova
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
-	"fmt"
 	"golang.org/x/net/context"
 )
 
@@ -17,7 +17,7 @@ type Request struct {
 	ResponseWriter http.ResponseWriter
 	routeParams    map[string]string
 	urlValues      url.Values
-	BaseUrl        string
+	BaseURL        string
 	Ctx            context.Context
 	ResponseCode   int
 }
@@ -36,14 +36,7 @@ type JSONErrors struct {
 
 // NewRequest creates a new Request pointer for an incoming request
 func NewRequest(w http.ResponseWriter, r *http.Request) *Request {
-	req := new(Request)
-	req.Request = r
-	req.routeParams = make(map[string]string)
-	req.ResponseWriter = w
-	req.urlValues = r.URL.Query()
-	req.BaseUrl = r.RequestURI
-
-	return req
+	return &Request{r, w, make(map[string]string), r.URL.Query(), r.RequestURI, context.Background(), 200}
 }
 
 // RouteParam checks for and returns param or "" if doesn't exist
@@ -92,7 +85,7 @@ func (r *Request) Error(statusCode int, msg string, errs ...interface{}) error {
 // buildRouteParams builds a map of the route params
 func (r *Request) buildRouteParams(route string) {
 	routeParams := r.routeParams
-	reqParts := strings.Split(r.BaseUrl, "/")
+	reqParts := strings.Split(r.BaseURL, "/")
 	routeParts := strings.Split(route, "/")
 
 	for index, val := range routeParts {
@@ -144,10 +137,36 @@ func (r *Request) StatusCode(c int) {
 	r.WriteHeader(c)
 }
 
+// WriteHeader sends an HTTP response header with status code.
+// If WriteHeader is not called explicitly, the first call to Write
+// will trigger an implicit WriteHeader(http.StatusOK).
+// Thus explicit calls to WriteHeader are mainly used to
+// send error codes.
 func (r *Request) WriteHeader(c int) {
+	r.ResponseCode = c
 	r.ResponseWriter.WriteHeader(c)
 }
 
+// Header returns the header map that will be sent by
+// WriteHeader. The Header map also is the mechanism with which
+// Handlers can set HTTP trailers.
+//
+// Changing the header map after a call to WriteHeader (or
+// Write) has no effect unless the modified headers are
+// trailers.
+//
+// There are two ways to set Trailers. The preferred way is to
+// predeclare in the headers which trailers you will later
+// send by setting the "Trailer" header to the names of the
+// trailer keys which will come later. In this case, those
+// keys of the Header map are treated as if they were
+// trailers. See the example. The second way, for trailer
+// keys not known to the Handler until after the first Write,
+// is to prefix the Header map keys with the TrailerPrefix
+// constant value. See TrailerPrefix.
+//
+// To suppress implicit response headers (such as "Date"), set
+// their value to nil
 func (r *Request) Header() http.Header {
 	return r.ResponseWriter.Header()
 }

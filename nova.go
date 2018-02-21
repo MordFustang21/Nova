@@ -84,6 +84,7 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				sn.errorFunc(request, err)
 			}
 		}
+
 		return
 	}
 
