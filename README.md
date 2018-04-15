@@ -36,17 +36,19 @@ http://localhost:8080/hello
 ```go
 package main
 
-import "github.com/MordFustang21/nova"
+import (
+	"github.com/MordFustang21/nova"
+	"net/http"
+	)
 
 func main() {
 	s := nova.New()
 	
-	s.Get("/hello", func(request *nova.Request) {
-	    request.Send("world")
-	    return
+	s.Get("/hello", func(request *nova.Request) error {
+	    return request.Send("world")
 	})
 	
-	s.ListenAndServe(":8080")
+	http.ListenAndServe(":8080", s)
 }
 
 ```
@@ -55,17 +57,20 @@ http://localhost:8080/hello/world
 ```go
 package main
 
-import "github.com/MordFustang21/nova"
+import (
+	"github.com/MordFustang21/nova"
+	"net/http"
+	)
 
 func main() {
 	s := nova.New()
 	
-	s.Get("/hello/:text", func(request *nova.Request) {
+	s.Get("/hello/:text", func(request *nova.Request) error {
 		t := request.RouteParam("text")
-	    request.Send(t)
+	    return request.Send(t)
 	})
 	
-	s.ListenAndServe(":8080")
+	http.ListenAndServe(":8080", s)
 }
 ```
 
@@ -75,14 +80,14 @@ http://localhost:8080/hello
 package main
 
 import (
-	"net/http"
 	"github.com/MordFustang21/nova"
-)
+	"net/http"
+	)
 
 func main() {
 	s := nova.New()
 	
-	s.Post("/hello", func(request *nova.Request) {
+	s.Post("/hello", func(request *nova.Request) error {
 		r := struct {
 		 World string
 		}{}
@@ -90,15 +95,14 @@ func main() {
 		// ReadJSON will attempt to unmarshall the json from the request body into the given struct
 		err := request.ReadJSON(&r)
 		if err != nil {
-		    request.Error(http.StatusBadRequest, "couldn't parse request", err.Error())
-		    return
+		    return request.Error(http.StatusBadRequest, "couldn't parse request", err.Error())
 		}
 		
 		// JSON will marshall the given object and marshall into into the response body
-		request.JSON(http.StatusOK, r)
+		return request.JSON(http.StatusOK, r)
 	})
 	
-	s.ListenAndServe(":8080")
+	http.ListenAndServe(":8080", s)
 	
 }
 ```

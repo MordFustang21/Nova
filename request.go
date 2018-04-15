@@ -98,7 +98,8 @@ func (r *Request) buildRouteParams(route string) {
 	for index, val := range routeParts {
 		if len(val) > 1 {
 			if val[0] == ':' {
-				routeParams[val[1:]] = reqParts[index]
+				param := strings.Split(reqParts[index], "?")
+				routeParams[val[1:]] = param[0]
 			}
 		}
 	}
