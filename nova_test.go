@@ -2,6 +2,7 @@ package nova
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -385,6 +386,35 @@ func TestServer_EnableDebug(t *testing.T) {
 
 	if !s.debug {
 		t.Error("Debug mode wasn't set")
+	}
+}
+
+func TestServer_ErrorFunc(t *testing.T) {
+	endpoint := "/test"
+	s := New()
+
+	errorHit := false
+
+	s.Error(func(req *Request, err error) {
+		errorHit = true
+	})
+
+	s.Get(endpoint, func(r *Request) error {
+		return errors.New("Error hit for testing")
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	res.Body.Close()
+
+	if !errorHit {
+		t.Error("Error function not called")
 	}
 }
 
