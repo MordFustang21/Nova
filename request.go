@@ -142,6 +142,7 @@ func (r *Request) GetMethod() string {
 
 // StatusCode sets the status code header
 func (r *Request) StatusCode(c int) {
+	r.ResponseCode = c
 	r.WriteHeader(c)
 }
 

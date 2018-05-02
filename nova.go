@@ -84,6 +84,10 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				sn.errorFunc(request, err)
 			}
 		}
+		
+		if request.ResponseCode == 0 {
+			request.ResponseCode = http.StatusOK
+		}
 		return
 	}
 

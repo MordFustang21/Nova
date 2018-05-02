@@ -8,9 +8,9 @@ package nova
 import (
 	"fmt"
 	"os"
-	"syscall"
 	"time"
-	"unsafe"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
@@ -56,9 +56,7 @@ func getDebugMethod(r *Request) func() {
 
 // IsTerminal returns true if the given file descriptor is a terminal.
 func isTerminal(fd uintptr) bool {
-	var termios syscall.Termios
-	_, _, err := syscall.Syscall6(syscall.SYS_IOCTL, fd, 0x5401, uintptr(unsafe.Pointer(&termios)), 0, 0, 0)
-	return err == 0
+	return terminal.IsTerminal(int(fd))
 }
 
 func colorForStatus(code int) string {
