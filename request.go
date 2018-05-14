@@ -1,14 +1,13 @@
 package nova
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
-
-	"fmt"
-	"golang.org/x/net/context"
 )
 
 // Request resembles an incoming request
