@@ -1,5 +1,3 @@
-![nova Logo](https://raw.githubusercontent.com/MordFustang21/supernova-logo/master/supernova_banner.png)
-
 [![GoDoc](https://godoc.org/github.com/MordFustang21/nova?status.svg)](https://godoc.org/github.com/MordFustang21/nova)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordfustang21/nova)](https://goreportcard.com/report/github.com/mordfustang21/nova)
 [![Build Status](https://travis-ci.org/MordFustang21/nova.svg)](https://travis-ci.org/MordFustang21/nova)
