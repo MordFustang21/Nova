@@ -2,8 +2,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/mordfustang21/nova)](https://goreportcard.com/report/github.com/mordfustang21/nova)
 [![Build Status](https://travis-ci.org/MordFustang21/nova.svg)](https://travis-ci.org/MordFustang21/nova)
 
-nova is a mux for http While we don't claim to be the best or fastest we provide a lot of tools and features that enable
-you to be highly productive help build up your api quickly.
+nova is a mux for http while we don't claim to be the best or fastest we provide a lot of tools and features that enable
+you to be highly productive and help build up your api quickly and efficiently.
 
 *Note nova's exported API interface will continue to change in unpredictable, backwards-incompatible ways until we tag a v1.0.0 release.
 
@@ -16,18 +16,6 @@ $ go get github.com/MordFustang21/nova
 ```
 import "github.com/MordFustang21/nova"
 ```
-
-### Use a vendor tool like dep
-1. go get dep
-```
-$ go get -u github.com/golang/dep/cmd/dep
-```
-2. cd to project folder and run dep
-```
-$ dep ensure
-```
-
-Refer to [dep](https://github.com/golang/dep) for more information
 
 ### Basic Usage
 http://localhost:8080/hello
