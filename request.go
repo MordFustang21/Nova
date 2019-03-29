@@ -42,6 +42,8 @@ func NewRequest(w http.ResponseWriter, r *http.Request) *Request {
 	req.urlValues = r.URL.Query()
 	req.BaseUrl = r.RequestURI
 
+	req.ResponseCode = http.StatusOK
+
 	return req
 }
 
@@ -123,6 +125,27 @@ func (r *Request) Send(data interface{}) error {
 	default:
 		err = errors.New("unsupported type Send type")
 	}
+
+	return err
+}
+
+// Write will write data to the response and set a given status code
+func (r *Request) Write(code int, data interface{}) error {
+	var err error
+
+	switch v := data.(type) {
+	case []byte:
+		_, err = r.ResponseWriter.Write(v)
+	case string:
+		_, err = r.ResponseWriter.Write([]byte(v))
+	case error:
+		_, err = r.ResponseWriter.Write([]byte(v.Error()))
+	default:
+		err = errors.New("unsupported type Send type")
+	}
+
+	// set status code for response
+	r.StatusCode(code)
 
 	return err
 }

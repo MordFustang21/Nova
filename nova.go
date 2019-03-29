@@ -84,10 +84,7 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				sn.errorFunc(request, err)
 			}
 		}
-		
-		if request.ResponseCode == 0 {
-			request.ResponseCode = http.StatusOK
-		}
+
 		return
 	}
 
@@ -101,27 +98,34 @@ func (sn *Server) All(route string, routeFunc RequestFunc) {
 
 // Get adds only GET method to route
 func (sn *Server) Get(route string, routeFunc RequestFunc) {
-	sn.addRoute("GET", buildRoute(route, routeFunc))
+	sn.addRoute(http.MethodGet, buildRoute(route, routeFunc))
 }
 
 // Post adds only POST method to route
 func (sn *Server) Post(route string, routeFunc RequestFunc) {
-	sn.addRoute("POST", buildRoute(route, routeFunc))
+	sn.addRoute(http.MethodPost, buildRoute(route, routeFunc))
 }
 
 // Put adds only PUT method to route
 func (sn *Server) Put(route string, routeFunc RequestFunc) {
-	sn.addRoute("PUT", buildRoute(route, routeFunc))
+	sn.addRoute(http.MethodPut, buildRoute(route, routeFunc))
 }
 
 // Delete adds only DELETE method to route
 func (sn *Server) Delete(route string, routeFunc RequestFunc) {
-	sn.addRoute("DELETE", buildRoute(route, routeFunc))
+	sn.addRoute(http.MethodDelete, buildRoute(route, routeFunc))
 }
 
 // Restricted adds route that is restricted by method
 func (sn *Server) Restricted(method, route string, routeFunc RequestFunc) {
 	sn.addRoute(method, buildRoute(route, routeFunc))
+}
+
+func (sn *Server) Group(path string) *RouteGroup {
+	return &RouteGroup{
+		s:    sn,
+		path: path,
+	}
 }
 
 // addRoute takes route and method and adds it to route tree
