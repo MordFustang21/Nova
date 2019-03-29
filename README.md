@@ -25,8 +25,10 @@ http://localhost:8080/hello
 package main
 
 import (
-	"github.com/MordFustang21/nova"
+	"log"
 	"net/http"
+	
+	"github.com/MordFustang21/nova"
 	)
 
 func main() {
@@ -36,7 +38,42 @@ func main() {
 	    return request.Send("world")
 	})
 	
-	http.ListenAndServe(":8080", s)
+	if err := http.ListenAndServe(":8080", s); err != nil {
+    		log.Fatal(err)
+	}
+}
+
+```
+### Route Group
+This will create a route with a base path than you can append other paths onto.
+
+This example creates two routes "/v1/hello" and "/v2/world" so you can keep backwards compatible changes
+```go
+package main
+
+import (
+	"log"
+	"net/http"
+	
+	"github.com/MordFustang21/nova"
+	)
+
+func worldRequest(request *nova.Request) error {
+	return request.Send("world")
+}
+
+func main() {
+	s := nova.New()
+	
+	v1Group := s.Group("/v1")
+	v2Group := s.Group("/v2")
+	
+	v1Group.Get("/hello", worldRequest)
+	v2Group.Get("/world", worldRequest)
+	
+	if err := http.ListenAndServe(":8080", s); err != nil {
+		log.Fatal(err)
+	}
 }
 
 ```
@@ -46,8 +83,10 @@ http://localhost:8080/hello/world
 package main
 
 import (
-	"github.com/MordFustang21/nova"
+	"log"
 	"net/http"
+	
+	"github.com/MordFustang21/nova"
 	)
 
 func main() {
@@ -58,7 +97,9 @@ func main() {
 	    return request.Send(t)
 	})
 	
-	http.ListenAndServe(":8080", s)
+	if err := http.ListenAndServe(":8080", s); err != nil {
+    		log.Fatal(err)
+	}
 }
 ```
 
@@ -68,8 +109,10 @@ http://localhost:8080/hello
 package main
 
 import (
-	"github.com/MordFustang21/nova"
+	"log"
 	"net/http"
+	
+	"github.com/MordFustang21/nova"
 	)
 
 func main() {
@@ -90,7 +133,9 @@ func main() {
 		return request.JSON(http.StatusOK, r)
 	})
 	
-	http.ListenAndServe(":8080", s)
+	if err := http.ListenAndServe(":8080", s); err != nil {
+    		log.Fatal(err)
+	}
 	
 }
 ```

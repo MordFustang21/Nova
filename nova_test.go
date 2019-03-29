@@ -429,3 +429,27 @@ func BenchmarkClimbTree(b *testing.B) {
 		m.climbTree("GET", "/test/stuff/world")
 	}
 }
+
+func TestRouteGroup(t *testing.T) {
+	endpoint := "/hello/world"
+
+	m := New()
+
+	g := m.Group("/hello")
+
+	g.Get("/world", func(req *Request) error {
+		return nil
+	})
+
+	ts := httptest.NewServer(m)
+	defer ts.Close()
+
+	res, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if res.StatusCode != 200 {
+		t.Error("couldn't get 200 from endpoint")
+	}
+}
