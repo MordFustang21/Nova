@@ -175,7 +175,10 @@ func TestServer_Post(t *testing.T) {
 			Hello string
 		}
 
-		r.ReadJSON(&ts)
+		err := r.ReadJSON(&ts)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if ts.Hello != "world" {
 			r.StatusCode(http.StatusBadRequest)
@@ -338,7 +341,7 @@ func TestRequest_Error(t *testing.T) {
 	endpoint := "/test"
 	s := New()
 	s.Get(endpoint, func(r *Request) error {
-		return r.Error(http.StatusNotImplemented, "method not ready")
+		return r.Error(http.StatusNotImplemented, "method not ready", nil)
 	})
 
 	ts := httptest.NewServer(s)
@@ -357,6 +360,34 @@ func TestRequest_Error(t *testing.T) {
 
 	if res.StatusCode != http.StatusNotImplemented {
 		t.Errorf("got wrong status code expected %d got %d", http.StatusNotImplemented, res.StatusCode)
+	}
+}
+
+func TestRequest_ErrorCallback(t *testing.T) {
+	endpoint := "/test"
+	s := New()
+
+	errorHit := false
+	s.ErrorFunc(func(req *Request, err error) {
+		if err != nil {
+			errorHit = true
+		}
+	})
+
+	s.Get(endpoint, func(r *Request) error {
+		return r.Error(http.StatusNotImplemented, "method not ready", errors.New("server error"))
+	})
+
+	ts := httptest.NewServer(s)
+	defer ts.Close()
+
+	_, err := http.Get(ts.URL + endpoint)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !errorHit {
+		t.Fatal("error func wasn't hit when error was returned")
 	}
 }
 
@@ -395,12 +426,12 @@ func TestServer_ErrorFunc(t *testing.T) {
 
 	errorHit := false
 
-	s.Error(func(req *Request, err error) {
+	s.ErrorFunc(func(req *Request, err error) {
 		errorHit = true
 	})
 
 	s.Get(endpoint, func(r *Request) error {
-		return errors.New("Error hit for testing")
+		return errors.New("error hit for testing")
 	})
 
 	ts := httptest.NewServer(s)
@@ -422,8 +453,7 @@ func BenchmarkClimbTree(b *testing.B) {
 	m := New()
 
 	m.Get("/test/stuff/world", func(req *Request) error {
-		req.Send("hello")
-		return nil
+		return req.Send("hello")
 	})
 	for i := 0; i < b.N; i++ {
 		m.climbTree("GET", "/test/stuff/world")

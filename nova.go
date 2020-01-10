@@ -40,9 +40,12 @@ type Middleware struct {
 
 // New returns new supernova router
 func New() *Server {
-	s := new(Server)
-	s.paths = make(map[string]*Node)
-	return s
+	return &Server{
+		paths: map[string]*Node{},
+		// set a default empty error func so we don't have to
+		// check if it's set to nil
+		errorFunc: func(req *Request, err error) {},
+	}
 }
 
 // EnableDebug toggles output for incoming requests
@@ -52,21 +55,19 @@ func (sn *Server) EnableDebug(debug bool) {
 	}
 }
 
-// Error sets the callback for errors
-func (sn *Server) Error(f ErrorFunc) {
-	sn.errorFunc = f
+// ErrorFunc sets the callback for errors
+func (sn *Server) ErrorFunc(f ErrorFunc) {
+	// only set if the passed value isn't nil
+	if f != nil {
+		sn.errorFunc = f
+	}
 }
 
 // handler is the main entry point into the router
 func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	request := NewRequest(w, r)
-	var logMethod func()
 	if sn.debug {
-		logMethod = getDebugMethod(request)
-	}
-
-	if logMethod != nil {
-		defer logMethod()
+		defer getDebugMethod(request)
 	}
 
 	// Run Middleware
@@ -75,20 +76,20 @@ func (sn *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// search the tree for the route that matches the path and method
 	route := sn.climbTree(request.GetMethod(), cleanPath(request.URL.Path))
-	if route != nil {
-		err := route.call(request)
-		// if we got error and erroFunc is set pass along
-		if err != nil {
-			if sn.errorFunc != nil {
-				sn.errorFunc(request, err)
-			}
-		}
 
+	// if no route is found return a 404
+	if route == nil {
+		http.NotFound(request.ResponseWriter, request.Request)
 		return
 	}
 
-	http.NotFound(request.ResponseWriter, request.Request)
+	// execute the found route and if there is an error returned execute the error func
+	err := route.call(request)
+	if err != nil {
+		sn.errorFunc(request, err)
+	}
 }
 
 // All adds route for all http methods
@@ -121,6 +122,7 @@ func (sn *Server) Restricted(method, route string, routeFunc RequestFunc) {
 	sn.addRoute(method, buildRoute(route, routeFunc))
 }
 
+// Group creates a new sub router that appends the path prefix
 func (sn *Server) Group(path string) *RouteGroup {
 	return &RouteGroup{
 		s:    sn,
@@ -130,15 +132,18 @@ func (sn *Server) Group(path string) *RouteGroup {
 
 // addRoute takes route and method and adds it to route tree
 func (sn *Server) addRoute(method string, route *Route) {
+	// if a base node isn't set for a method set it
 	if sn.paths[method] == nil {
 		sn.paths[method] = newNode()
 	}
 
+	// split the path parts and start building out tree from method node
 	parts := strings.Split(route.route, "/")
 	currentNode := sn.paths[method]
 	for index, val := range parts {
 		childKey := val
 		if len(val) > 1 {
+			// if first character is a colon this part of path is a parameter set to an empty key
 			if val[0] == ':' {
 				childKey = ""
 			}
@@ -148,11 +153,13 @@ func (sn *Server) addRoute(method string, route *Route) {
 		if node, ok := currentNode.children[childKey]; ok {
 			currentNode = node
 		} else {
-			node := newNode()
-			currentNode.children[childKey] = node
-			currentNode = node
+			n := newNode()
+			currentNode.children[childKey] = n
+			currentNode = n
 		}
 
+		// if at the last part of path set the child key to a new node
+		// with the route set to the incoming route
 		if index == len(parts)-1 {
 			node := newNode()
 			node.route = route
@@ -162,10 +169,9 @@ func (sn *Server) addRoute(method string, route *Route) {
 }
 
 func newNode() *Node {
-	n := new(Node)
-	n.children = make(map[string]*Node)
-
-	return n
+	return &Node{
+		children: map[string]*Node{},
+	}
 }
 
 // climbTree takes in path and traverses tree to find route
@@ -207,16 +213,13 @@ func (sn *Server) climbTree(method, path string) *Route {
 
 // buildRoute creates new Route
 func buildRoute(route string, routeFunc RequestFunc) *Route {
-	routeObj := new(Route)
-	routeObj.routeFunc = routeFunc
-	routeObj.routeParamsIndex = make(map[int]string)
-	if route[len(route)-1] == '/' && len(route) > 1 {
-		route = route[:len(route)-1]
+	route = path.Clean(route)
+
+	return &Route{
+		routeFunc:        routeFunc,
+		routeParamsIndex: map[int]string{},
+		route:            route,
 	}
-
-	routeObj.route = route
-
-	return routeObj
 }
 
 // Use adds a new function to the middleware stack
@@ -224,9 +227,8 @@ func (sn *Server) Use(f func(req *Request, next func())) {
 	if sn.middleWare == nil {
 		sn.middleWare = make([]Middleware, 0)
 	}
-	middle := new(Middleware)
-	middle.middleFunc = f
-	sn.middleWare = append(sn.middleWare, *middle)
+
+	sn.middleWare = append(sn.middleWare, Middleware{middleFunc: f})
 }
 
 // Internal method that runs the middleware
